@@ -213,9 +213,24 @@ export default function App() {
                     alt=""
                     style={{
                       position: "absolute",
-                      width: 64, height: 64,
+                      width: 48, height: 48,
                       objectFit: "contain",
                       mixBlendMode: "screen",
+                      pointerEvents: "none",
+                      zIndex: 10,
+                    }}
+                  />
+                )}
+                {/* 浅色主题绿灯时，小狗叠在灯上 */}
+                {!dark && light === "green" && active === "green" && (
+                  <img
+                    src="dog-green.gif"
+                    alt=""
+                    style={{
+                      position: "absolute",
+                      width: 48, height: 48,
+                      objectFit: "contain",
+                      mixBlendMode: "multiply",
                       pointerEvents: "none",
                       zIndex: 10,
                     }}
