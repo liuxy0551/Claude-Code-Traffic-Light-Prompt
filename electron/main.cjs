@@ -36,10 +36,13 @@ function setupClaudeHooks() {
   const settingsPath = getClaudeSettingsPath()
   const settingsDir  = path.dirname(settingsPath)
 
+  // Windows 用 cmd /c echo，避免 echo 带多余空格；macOS/Linux 用 sh
+  const isWin = process.platform === 'win32'
+  const stateFile = STATE_FILE.replace(/\\/g, '\\\\')
   const HOOKS_TO_ADD = {
-    UserPromptSubmit: `echo red > "${STATE_FILE}"`,
-    Stop:             `echo green > "${STATE_FILE}"`,
-    Elicitation:      `echo yellow > "${STATE_FILE}"`,
+    UserPromptSubmit: isWin ? `cmd /c "echo red> \\"${STATE_FILE}\\""` : `echo red > "${STATE_FILE}"`,
+    Stop:             isWin ? `cmd /c "echo green> \\"${STATE_FILE}\\""` : `echo green > "${STATE_FILE}"`,
+    Elicitation:      isWin ? `cmd /c "echo yellow> \\"${STATE_FILE}\\""` : `echo yellow > "${STATE_FILE}"`,
   }
 
   let settings = {}
@@ -47,7 +50,9 @@ function setupClaudeHooks() {
     if (fs.existsSync(settingsPath)) {
       settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
     }
-  } catch { return }
+  } catch {
+    settings = {}
+  }
 
   if (!settings.hooks) settings.hooks = {}
 
@@ -58,7 +63,7 @@ function setupClaudeHooks() {
       existing.some(h => Array.isArray(h.hooks) && h.hooks.some(hh => hh.command === command))
     if (!alreadySet) {
       if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = []
-      settings.hooks[event].push({ hooks: [{ type: 'command', command }] })
+      settings.hooks[event].push({ matcher: '', hooks: [{ type: 'command', command }] })
       changed = true
     }
   }
@@ -66,8 +71,12 @@ function setupClaudeHooks() {
   if (changed) {
     try {
       fs.mkdirSync(settingsDir, { recursive: true })
-      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
-    } catch {}
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+    } catch (e) {
+      // 写入失败时弹出提示
+      const { dialog } = require('electron')
+      dialog.showErrorBox('CC 红绿灯', `自动配置失败，请手动添加 hooks：\n${e.message}\n\n配置文件路径：${settingsPath}`)
+    }
   }
 }
 
