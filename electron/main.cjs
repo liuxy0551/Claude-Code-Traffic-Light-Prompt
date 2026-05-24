@@ -3,13 +3,14 @@ const path = require('path')
 const fs = require('fs')
 
 const os = require('os')
-const TMP = process.platform === 'win32' ? path.join(os.tmpdir(), 'cc_traffic_light') : '/tmp'
-const STATE_FILE = path.join(TMP, 'cc_traffic_light_state')
-const PID_FILE   = path.join(TMP, 'cc_traffic_light_electron.pid')
-const THEME_FILE = path.join(TMP, 'cc_traffic_light_theme')
-const MUTE_FILE  = path.join(TMP, 'cc_traffic_light_mute')
-const distPath   = path.join(__dirname, '../dist/index.html')
-const isDev      = !fs.existsSync(distPath)
+// 统一用 ~/.claude/ 目录，Claude Code 已保证该目录存在
+const TMP          = path.join(os.homedir(), '.claude')
+const STATE_FILE   = path.join(TMP, 'cc_traffic_light_state')
+const PID_FILE     = path.join(TMP, 'cc_traffic_light_electron.pid')
+const THEME_FILE   = path.join(TMP, 'cc_traffic_light_theme')
+const MUTE_FILE    = path.join(TMP, 'cc_traffic_light_mute')
+const distPath     = path.join(__dirname, '../dist/index.html')
+const isDev        = !fs.existsSync(distPath)
 
 const TRAY_ICON_B64 = 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAARklEQVR4nGNgIAD+WxvcIaQGp0Z0TD8DsGmmiiHkeWE+F5kGgDSiYfoZgE0zVQwhywsGFyPIMwCkER3TzwBsmqliCE28AAC/pr8bZBUK/QAAAABJRU5ErkJggg=='
 
@@ -27,23 +28,18 @@ function readMute() {
 }
 
 function getClaudeSettingsPath() {
-  const os = require('os')
-  if (process.platform === 'win32') {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'Claude', 'settings.json')
-  }
+  // Claude Code CLI 在所有平台都用 ~/.claude/settings.json
   return path.join(os.homedir(), '.claude', 'settings.json')
 }
 
 function setupClaudeHooks() {
   const settingsPath = getClaudeSettingsPath()
+  const settingsDir  = path.dirname(settingsPath)
 
-  // Windows 用 cmd 语法，macOS/Linux 用 sh 语法
-  const isWin = process.platform === 'win32'
-  const tmpDir = isWin ? path.join(os.tmpdir(), 'cc_traffic_light') : '/tmp'
   const HOOKS_TO_ADD = {
-    UserPromptSubmit: isWin ? `echo red> "${path.join(tmpDir, 'cc_traffic_light_state')}"` : 'echo red > /tmp/cc_traffic_light_state',
-    Stop:             isWin ? `echo green> "${path.join(tmpDir, 'cc_traffic_light_state')}"` : 'echo green > /tmp/cc_traffic_light_state',
-    Elicitation:      isWin ? `echo yellow> "${path.join(tmpDir, 'cc_traffic_light_state')}"` : 'echo yellow > /tmp/cc_traffic_light_state',
+    UserPromptSubmit: `echo red > "${STATE_FILE}"`,
+    Stop:             `echo green > "${STATE_FILE}"`,
+    Elicitation:      `echo yellow > "${STATE_FILE}"`,
   }
 
   let settings = {}
@@ -69,6 +65,7 @@ function setupClaudeHooks() {
 
   if (changed) {
     try {
+      fs.mkdirSync(settingsDir, { recursive: true })
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2))
     } catch {}
   }
@@ -235,10 +232,10 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // 确保 tmp 目录存在（Windows 需要）
-  if (process.platform === 'win32') {
-    try { fs.mkdirSync(path.join(os.tmpdir(), 'cc_traffic_light'), { recursive: true }) } catch {}
-  } else {
+  // 确保 ~/.claude 目录存在
+  try { fs.mkdirSync(TMP, { recursive: true }) } catch {}
+
+  if (process.platform !== 'win32') {
     // 杀掉旧的 Python 版，防止两个红绿灯同时出现
     require('child_process').exec("pkill -f 'traffic_light.py'")
   }
