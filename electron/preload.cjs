@@ -25,5 +25,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   focusApp: () => ipcRenderer.send('focus-app'),
   getMute: () => ipcRenderer.invoke('get-mute'),
   setMute: (muted) => ipcRenderer.send('set-mute', muted),
+  getStats: () => ipcRenderer.invoke('get-stats'),
   setWindowHeight: (h) => ipcRenderer.send('set-window-height', h),
 })

@@ -10,6 +10,8 @@ const PID_FILE     = path.join(TMP, 'cc_traffic_light_electron.pid')
 const THEME_FILE   = path.join(TMP, 'cc_traffic_light_theme')
 const MUTE_FILE    = path.join(TMP, 'cc_traffic_light_mute')
 const STYLE_FILE   = path.join(TMP, 'cc_traffic_light_style')
+// 统计文件存到 ~/.claude/，跨平台持久化，不放 /tmp 避免重启丢失
+const STATS_FILE   = path.join(os.homedir(), '.claude', 'cc_traffic_light_stats.json')
 const distPath     = path.join(__dirname, '../dist/index.html')
 const isDev        = !fs.existsSync(distPath)
 
@@ -33,6 +35,43 @@ function readStyle() {
     const s = fs.existsSync(STYLE_FILE) ? fs.readFileSync(STYLE_FILE, 'utf-8').trim() : ''
     return s === 'single' ? 'single' : 'triple'
   } catch { return 'triple' }
+}
+
+function getToday() {
+  // 用本地时区日期，避免跨时区问题
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function readStats() {
+  try {
+    return fs.existsSync(STATS_FILE) ? JSON.parse(fs.readFileSync(STATS_FILE, 'utf-8')) : {}
+  } catch { return {} }
+}
+
+function saveStats(stats) {
+  try {
+    fs.mkdirSync(path.dirname(STATS_FILE), { recursive: true })
+    fs.writeFileSync(STATS_FILE, JSON.stringify(stats, null, 2))
+  } catch {}
+}
+
+function recordStateChange(newState, prevState, redStartTime) {
+  const today = getToday()
+  const stats = readStats()
+  if (!stats[today]) stats[today] = { redCount: 0, greenCount: 0, redDuration: 0 }
+  if (newState === 'red') {
+    stats[today].redCount++
+  } else if (newState === 'green') {
+    stats[today].greenCount++
+    if (prevState === 'red' && redStartTime) {
+      stats[today].redDuration += Date.now() - redStartTime
+    }
+  }
+  saveStats(stats)
 }
 
 function getClaudeSettingsPath() {
@@ -64,17 +103,18 @@ function setupClaudeHooks() {
 
   const isWin = process.platform === 'win32'
   // Windows 用 %USERPROFILE% 环境变量，避免硬编码绝对路径导致跨机器失效
-  const HOOKS_TO_ADD = {
-    UserPromptSubmit: isWin
-      ? `cmd /c "echo red> %USERPROFILE%\\.claude\\cc_traffic_light_state"`
-      : `echo red > ${STATE_FILE}`,
-    Stop: isWin
-      ? `cmd /c "echo green> %USERPROFILE%\\.claude\\cc_traffic_light_state"`
-      : `echo green > ${STATE_FILE}`,
-    Elicitation: isWin
-      ? `cmd /c "echo yellow> %USERPROFILE%\\.claude\\cc_traffic_light_state"`
-      : `echo yellow > ${STATE_FILE}`,
-  }
+  const stateCmd = (color) => isWin
+    ? `cmd /c "echo ${color}> %USERPROFILE%\\.claude\\cc_traffic_light_state"`
+    : `echo ${color} > ${STATE_FILE}`
+
+  // Elicitation 在旧版 CC（<2.1.76）不支持，改用 PreToolUse+AskUserQuestion 触发黄灯
+  const HOOKS_TO_ADD = [
+    { event: 'UserPromptSubmit', matcher: '',               command: stateCmd('red')    },
+    { event: 'Stop',             matcher: '',               command: stateCmd('green')  },
+    { event: 'PreToolUse',       matcher: 'AskUserQuestion', command: stateCmd('yellow') },
+  ]
+  // 需要清理的旧事件（含已废弃的 Elicitation）
+  const EVENTS_TO_CLEAN = ['UserPromptSubmit', 'Stop', 'PreToolUse', 'Elicitation']
 
   let settings = {}
   try {
@@ -87,9 +127,9 @@ function setupClaudeHooks() {
 
   if (!settings.hooks) settings.hooks = {}
 
-  // 清理所有旧的红绿灯 hook（含绝对路径的旧版本），避免残留失效命令
+  // 清理所有旧的红绿灯 hook（含绝对路径旧版本、Elicitation 废弃事件）
   let changed = false
-  for (const event of Object.keys(HOOKS_TO_ADD)) {
+  for (const event of EVENTS_TO_CLEAN) {
     if (!Array.isArray(settings.hooks[event])) continue
     const before = settings.hooks[event].length
     settings.hooks[event] = settings.hooks[event].filter(h => {
@@ -99,12 +139,14 @@ function setupClaudeHooks() {
       )
     })
     if (settings.hooks[event].length !== before) changed = true
+    // 清空后删除空数组，避免留下空 key
+    if (settings.hooks[event].length === 0) delete settings.hooks[event]
   }
 
-  // 写入新 hook
-  for (const [event, command] of Object.entries(HOOKS_TO_ADD)) {
+  // 写入新 hook（matcher 始终为字符串，兼容所有 CC 版本）
+  for (const { event, matcher, command } of HOOKS_TO_ADD) {
     if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = []
-    settings.hooks[event].push({ hooks: [{ type: 'command', command }] })
+    settings.hooks[event].push({ matcher, hooks: [{ type: 'command', command }] })
     changed = true
   }
 
@@ -294,6 +336,37 @@ function buildTrayMenu(currentTheme, currentStyle) {
     },
     { type: 'separator' },
     {
+      label: '本周周报',
+      click: () => {
+        const { dialog } = require('electron')
+        const stats = readStats()
+        const today = new Date()
+        const dow = today.getDay() || 7
+        let totalRed = 0, totalGreen = 0, totalDuration = 0
+        for (let i = 1; i <= dow; i++) {
+          const d = new Date(today)
+          d.setDate(today.getDate() - (dow - i))
+          const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+          const day = stats[key]
+          if (day) {
+            totalRed      += day.redCount   || 0
+            totalGreen    += day.greenCount  || 0
+            totalDuration += day.redDuration || 0
+          }
+        }
+        const h = Math.floor(totalDuration / 3600000)
+        const m = Math.floor((totalDuration % 3600000) / 60000)
+        const durStr = h > 0 ? `${h} 小时 ${m} 分钟` : `${m} 分钟`
+        dialog.showMessageBox({
+          type: 'info',
+          title: '本周周报',
+          message: '本周 Claude Code 使用情况',
+          detail: `思考次数：${totalRed} 次\n回复次数：${totalGreen} 次\n思考总时长：${durStr}`,
+          buttons: ['好的'],
+        })
+      }
+    },
+    {
       label: '检查更新',
       click: () => checkForUpdates(true)
     },
@@ -359,12 +432,16 @@ function createWindow() {
 
   let lastState = ''
   let lastTheme = readTheme()
+  let redStartTime = null
 
   const poll = setInterval(() => {
     try {
       if (fs.existsSync(STATE_FILE)) {
         const state = fs.readFileSync(STATE_FILE, 'utf-8').trim()
         if (state !== lastState) {
+          recordStateChange(state, lastState, redStartTime)
+          if (state === 'red') redStartTime = Date.now()
+          else redStartTime = null
           lastState = state
           mainWin.webContents.send('state-change', state)
         }
@@ -416,6 +493,8 @@ function createWindow() {
     try { fs.writeFileSync(STYLE_FILE, style) } catch {}
     if (tray) tray.setContextMenu(buildTrayMenu(readTheme(), style))
   })
+
+  ipcMain.handle('get-stats', () => readStats())
 }
 
 app.whenReady().then(() => {
