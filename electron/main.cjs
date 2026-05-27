@@ -132,10 +132,11 @@ function handleRemoteConfig({ version, notes, message }, manual = false) {
   const showUpdate = () => {
     if (!version || !needsUpdate(version)) {
       if (manual) {
+        const current = require('../package.json').version
         dialog.showMessageBox({
           type: 'info',
           title: 'CC 红绿灯',
-          message: '当前已是最新版本',
+          message: `当前已是最新版本 v${current}`,
           buttons: ['好的'],
         })
       }
