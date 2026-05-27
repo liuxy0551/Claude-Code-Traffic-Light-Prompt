@@ -28,8 +28,26 @@ function readMute() {
 }
 
 function getClaudeSettingsPath() {
-  // Claude Code CLI 在所有平台都用 ~/.claude/settings.json
-  return path.join(os.homedir(), '.claude', 'settings.json')
+  // 优先检测 CC 实际使用的配置目录，避免因安装方式不同导致路径错误
+  const candidates = [
+    path.join(os.homedir(), '.claude', 'settings.json'),
+  ]
+  if (process.platform === 'win32') {
+    // 桌面版 / 不同安装方式可能写到 AppData
+    const appdata = process.env.APPDATA || ''
+    const localappdata = process.env.LOCALAPPDATA || ''
+    candidates.push(
+      path.join(appdata, 'Claude Code', 'settings.json'),
+      path.join(appdata, 'Claude', 'settings.json'),
+      path.join(localappdata, 'Claude Code', 'settings.json'),
+      path.join(localappdata, 'AnthropicClaude', 'settings.json'),
+    )
+  }
+  // 返回第一个已存在的路径；都不存在则用默认
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p
+  }
+  return candidates[0]
 }
 
 function setupClaudeHooks() {
@@ -86,14 +104,17 @@ function setupClaudeHooks() {
     try {
       fs.mkdirSync(settingsDir, { recursive: true })
       fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+      lastConfiguredSettingsPath = settingsPath
     } catch (e) {
       const { dialog } = require('electron')
       dialog.showErrorBox('CC 红绿灯', `自动配置失败，请手动添加 hooks：\n${e.message}\n\n配置文件路径：${settingsPath}`)
     }
+  } else {
+    lastConfiguredSettingsPath = settingsPath
   }
 }
 
-
+let lastConfiguredSettingsPath = ''
 let mainWin = null
 
 function buildAppMenu(currentTheme) {
@@ -141,6 +162,36 @@ function buildTrayMenu(currentTheme) {
     { label: '切换到红灯', click: () => { try { fs.writeFileSync(STATE_FILE, 'red') } catch {} } },
     { label: '切换到黄灯', click: () => { try { fs.writeFileSync(STATE_FILE, 'yellow') } catch {} } },
     { label: '切换到绿灯', click: () => { try { fs.writeFileSync(STATE_FILE, 'green') } catch {} } },
+    { type: 'separator' },
+    {
+      label: '查看配置路径',
+      click: () => {
+        const { dialog, shell } = require('electron')
+        const p = lastConfiguredSettingsPath || getClaudeSettingsPath()
+        dialog.showMessageBox({
+          type: 'info',
+          title: 'CC 红绿灯 — 配置路径',
+          message: 'Hooks 已写入以下文件：',
+          detail: p + '\n\n如果红绿灯不响应，请确认 Claude Code 读取的是这个文件。\n点击"打开文件"可直接查看内容。',
+          buttons: ['打开文件', '关闭'],
+          defaultId: 1,
+        }).then(({ response }) => { if (response === 0) shell.openPath(p) })
+      }
+    },
+    {
+      label: '重新写入配置',
+      click: () => {
+        setupClaudeHooks()
+        const { dialog } = require('electron')
+        dialog.showMessageBox({
+          type: 'info',
+          title: 'CC 红绿灯',
+          message: '配置已重新写入',
+          detail: lastConfiguredSettingsPath || getClaudeSettingsPath(),
+          buttons: ['确定'],
+        })
+      }
+    },
     { type: 'separator' },
     {
       label: currentTheme === 'dark' ? '切换浅色模式' : '切换深色模式',
