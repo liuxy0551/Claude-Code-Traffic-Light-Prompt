@@ -108,9 +108,10 @@ function setupClaudeHooks() {
     : `echo ${color} > ${STATE_FILE}`
 
   // Elicitation 在旧版 CC（<2.1.76）不支持，改用 PreToolUse+AskUserQuestion 触发黄灯
+  // UserPromptSubmit/Stop 是生命周期事件，不需要 matcher 字段
   const HOOKS_TO_ADD = [
-    { event: 'UserPromptSubmit', matcher: '',               command: stateCmd('red')    },
-    { event: 'Stop',             matcher: '',               command: stateCmd('green')  },
+    { event: 'UserPromptSubmit', command: stateCmd('red')    },
+    { event: 'Stop',             command: stateCmd('green')  },
     { event: 'PreToolUse',       matcher: 'AskUserQuestion', command: stateCmd('yellow') },
   ]
   // 需要清理的旧事件（含已废弃的 Elicitation）
@@ -143,10 +144,12 @@ function setupClaudeHooks() {
     if (settings.hooks[event].length === 0) delete settings.hooks[event]
   }
 
-  // 写入新 hook（matcher 始终为字符串，兼容所有 CC 版本）
+  // 写入新 hook（matcher 仅在需要时写入，生命周期事件不加 matcher）
   for (const { event, matcher, command } of HOOKS_TO_ADD) {
     if (!Array.isArray(settings.hooks[event])) settings.hooks[event] = []
-    settings.hooks[event].push({ matcher, hooks: [{ type: 'command', command }] })
+    const entry = { hooks: [{ type: 'command', command }] }
+    if (matcher) entry.matcher = matcher
+    settings.hooks[event].push(entry)
     changed = true
   }
 
