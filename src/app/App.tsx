@@ -170,7 +170,7 @@ export default function App() {
 
   return (
     <div
-      className="size-full flex flex-col items-center justify-center"
+      className="size-full flex flex-col items-center justify-start pt-3"
       onMouseDown={() => window.electronAPI.focusApp()}
       style={{
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
