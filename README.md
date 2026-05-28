@@ -8,4 +8,13 @@
   Run `npm i` to install the dependencies.
 
   Run `npm run dev` to start the development server.
-  
+
+  Run `rm -rf dist && NO_PROXY=localhost npx electron .` to run the application.
+
+  Run `npm run dist` to build the application.
+
+  ## 余量查询
+
+  支持查询 Xiaomi Mimo 用量：https://github.com/farion1231/cc-switch/issues/2488#issuecomment-4429924018
+
+  ![余量查询](public/mimo-usage.png)

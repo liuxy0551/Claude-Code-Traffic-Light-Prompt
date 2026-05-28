@@ -74,6 +74,95 @@ function recordStateChange(newState, prevState, redStartTime) {
   saveStats(stats)
 }
 
+// ─── 余量查询 ───────────────────────────────────────────────────
+const DEFAULT_BALANCE_CONFIG = {
+  request: {
+    url: 'https://platform.xiaomimimo.com/api/v1/tokenPlan/usage',
+    method: 'GET',
+    headers: {
+      Cookie: ``,
+      'User-Agent': 'cc-switch/1.0',
+      Accept: 'application/json',
+    },
+  },
+  extractor: `function (response) {
+    const SCALE = 1000000;
+    const items = response?.data?.usage?.items || [];
+    const planConfigs = [
+      { name: "plan_total_token", planName: "套餐" },
+      { name: "compensation_total_token", planName: "补偿" },
+    ];
+    const formatPercent = (used, total, fallbackPercent) => {
+      const percent = total > 0 ? used / total : Number(fallbackPercent || 0);
+      return (percent * 100).toFixed(2).replace(/\\.?0+$/, "") + "%";
+    };
+    const formatValue = (value) => (value / SCALE) / 100;
+    return planConfigs.map(({ name, planName }) => {
+      const item = items.find((i) => i?.name === name);
+      if (!item) return null;
+      const used = Number(item?.used || 0);
+      const total = Number(item?.limit || 0);
+      const remaining = Math.max(total - used, 0);
+      return {
+        isValid: true, planName,
+        used: formatValue(used), total: formatValue(total), remaining: formatValue(remaining),
+        unit: "亿 Credits",
+        extra: formatPercent(used, total, item?.percent),
+      };
+    }).filter(Boolean).filter(item => item.total > 0);
+  }`,
+}
+
+let balanceConfig = { ...DEFAULT_BALANCE_CONFIG }
+
+function fetchBalanceData() {
+  return new Promise((resolve) => {
+    try {
+      const { request: reqConfig, extractor } = balanceConfig
+      if (!reqConfig || !reqConfig.url) {
+        return resolve({ isValid: false, error: '无效的配置：缺少 request.url' })
+      }
+
+      const url = new URL(reqConfig.url)
+      const transport = url.protocol === 'https:' ? require('https') : require('http')
+
+      const options = {
+        hostname: url.hostname,
+        port: url.port || (url.protocol === 'https:' ? 443 : 80),
+        path: url.pathname + url.search,
+        method: reqConfig.method || 'GET',
+        headers: reqConfig.headers || {},
+        timeout: 10000,
+      }
+
+      const req = transport.request(options, (res) => {
+        let data = ''
+        res.on('data', chunk => { data += chunk })
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data)
+            const fn = new Function('return (' + extractor + ')')()
+            const result = fn(json)
+            if (Array.isArray(result)) {
+              resolve({ items: result })
+            } else {
+              resolve(result)
+            }
+          } catch (e) {
+            resolve({ isValid: false, error: '解析失败: ' + e.message })
+          }
+        })
+      })
+
+      req.on('error', (e) => resolve({ isValid: false, error: '请求失败: ' + e.message }))
+      req.on('timeout', () => { req.destroy(); resolve({ isValid: false, error: '请求超时' }) })
+      req.end()
+    } catch (e) {
+      resolve({ isValid: false, error: e.message })
+    }
+  })
+}
+
 function getClaudeSettingsPath() {
   // 优先检测 CC 实际使用的配置目录，避免因安装方式不同导致路径错误
   const candidates = [
@@ -352,6 +441,20 @@ function buildTrayMenu(currentTheme, currentStyle) {
     },
     { type: 'separator' },
     {
+      label: isBalanceVisible ? '隐藏余量' : '显示余量',
+      click: () => {
+        isBalanceVisible = !isBalanceVisible
+        if (!isBalanceVisible && balanceTooltipWin && !balanceTooltipWin.isDestroyed()) {
+          balanceTooltipWin.close()
+        }
+        if (mainWin && !mainWin.isDestroyed()) {
+          mainWin.webContents.send('balance-visible-change', isBalanceVisible)
+        }
+        tray.setContextMenu(buildTrayMenu(currentTheme, currentStyle))
+      }
+    },
+    { type: 'separator' },
+    {
       label: currentTheme === 'dark' ? '切换浅色模式' : '切换深色模式',
       click: () => {
         const next = currentTheme === 'dark' ? 'light' : 'dark'
@@ -414,6 +517,108 @@ function buildTrayMenu(currentTheme, currentStyle) {
     { label: '退出', click: () => app.quit() }
   ])
 }
+
+// ─── 余量查询 IPC ─────────────────────────────────────────────
+let balanceTooltipWin = null
+let isTooltipOpen = false
+let isBalanceVisible = true
+
+ipcMain.handle('fetch-balance', async () => {
+  return await fetchBalanceData()
+})
+
+ipcMain.on('open-balance-tooltip', (_, data) => {
+  if (balanceTooltipWin && !balanceTooltipWin.isDestroyed()) {
+    balanceTooltipWin.close()
+    balanceTooltipWin = null
+    isTooltipOpen = false
+    if (tray) tray.setContextMenu(buildTrayMenu(readTheme(), readStyle()))
+    return
+  }
+
+  const [mx, my] = mainWin.getPosition()
+  const [mw] = mainWin.getSize()
+  const tooltipW = 280, tooltipH = 222
+
+  const { width: sw } = screen.getPrimaryDisplay().workAreaSize
+  let tx = mx + mw + 4
+  if (tx + tooltipW > sw) tx = mx - tooltipW - 4
+
+  balanceTooltipWin = new BrowserWindow({
+    width: tooltipW,
+    height: tooltipH,
+    x: tx,
+    y: my,
+    frame: false,
+    transparent: true,
+    backgroundColor: '#00000000',
+    alwaysOnTop: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    roundedCorners: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'tooltip-preload.cjs'),
+      contextIsolation: true,
+      sandbox: false,
+    },
+  })
+
+  balanceTooltipWin.setAlwaysOnTop(true, 'floating')
+  balanceTooltipWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  const tooltipPath = isDev
+    ? path.join(__dirname, '../public/balance-tooltip.html')
+    : path.join(__dirname, '../dist/balance-tooltip.html')
+  balanceTooltipWin.loadFile(tooltipPath)
+
+  balanceTooltipWin.webContents.on('did-finish-load', () => {
+    if (!balanceTooltipWin || balanceTooltipWin.isDestroyed()) return
+    const encoded = encodeURIComponent(JSON.stringify(data))
+    balanceTooltipWin.webContents.executeJavaScript(
+      `window.__balanceData = JSON.parse(decodeURIComponent("${encoded}")); renderBalance && renderBalance(window.__balanceData)`
+    )
+  })
+
+  isTooltipOpen = true
+  if (tray) tray.setContextMenu(buildTrayMenu(readTheme(), readStyle()))
+
+  balanceTooltipWin.on('closed', () => {
+    balanceTooltipWin = null
+    isTooltipOpen = false
+    if (tray) tray.setContextMenu(buildTrayMenu(readTheme(), readStyle()))
+  })
+})
+
+ipcMain.handle('refresh-balance-tooltip', async () => {
+  const data = await fetchBalanceData()
+  if (mainWin && !mainWin.isDestroyed()) {
+    mainWin.webContents.send('balance-update', data)
+  }
+  return data
+})
+
+ipcMain.on('resize-balance-tooltip', (_, height) => {
+  if (balanceTooltipWin && !balanceTooltipWin.isDestroyed()) {
+    balanceTooltipWin.setSize(280, height)
+  }
+})
+
+ipcMain.handle('read-clipboard', () => {
+  const { clipboard } = require('electron')
+  return clipboard.readText()
+})
+
+ipcMain.handle('update-balance-cookie', async (_, cookie) => {
+  try {
+    if (!balanceConfig.request) balanceConfig.request = {}
+    if (!balanceConfig.request.headers) balanceConfig.request.headers = {}
+    balanceConfig.request.headers.Cookie = cookie
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e.message }
+  }
+})
 
 function createWindow() {
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize
@@ -522,6 +727,16 @@ function createWindow() {
   })
 
   ipcMain.handle('get-stats', () => readStats())
+
+  // 5 分钟自动刷新余量
+  const fetchAndNotifyBalance = async () => {
+    const data = await fetchBalanceData()
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.webContents.send('balance-update', data)
+    }
+  }
+  const balanceTimer = setInterval(fetchAndNotifyBalance, 300000)
+  mainWin.on('closed', () => { clearInterval(balanceTimer) })
 }
 
 app.whenReady().then(() => {

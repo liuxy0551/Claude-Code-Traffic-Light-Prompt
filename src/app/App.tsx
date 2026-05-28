@@ -4,6 +4,27 @@ type Light = "red" | "yellow" | "green";
 type Theme = "dark" | "light";
 type Style = "triple" | "single";
 
+interface BalanceItem {
+  isValid: boolean;
+  planName?: string;
+  used?: number;
+  total?: number;
+  remaining?: number;
+  unit?: string;
+  extra?: string;
+}
+
+interface BalanceData {
+  isValid?: boolean;
+  used?: number;
+  total?: number;
+  remaining?: number;
+  unit?: string;
+  extra?: string;
+  error?: string;
+  items?: BalanceItem[];
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -20,6 +41,10 @@ declare global {
       getMute: () => Promise<boolean>;
       setMute: (muted: boolean) => void;
       setWindowHeight: (h: number) => void;
+      fetchBalance: () => Promise<BalanceData>;
+      openBalanceTooltip: (data: BalanceData) => void;
+      onBalanceUpdate: (cb: (data: BalanceData) => void) => () => void;
+      onBalanceVisibleChange: (cb: (visible: boolean) => void) => () => void;
     };
   }
 }
@@ -39,10 +64,13 @@ export default function App() {
   const [greenSteady, setGreenSteady] = useState(false);
   const [muted, setMuted]             = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [balance, setBalance]         = useState<BalanceData | null>(null);
+  const [balanceVisible, setBalanceVisible] = useState(true);
   const greenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioCtxRef   = useRef<AudioContext | null>(null);
 
   useEffect(() => {
+    if (!window.electronAPI) return;
     window.electronAPI.getTheme().then((t) => {
       if (t === "light" || t === "dark") setThemeState(t as Theme);
     });
@@ -53,15 +81,26 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!window.electronAPI) return;
     return window.electronAPI.onThemeChange((t) => {
       if (t === "light" || t === "dark") setThemeState(t as Theme);
     });
   }, []);
 
   useEffect(() => {
+    if (!window.electronAPI) return;
     return window.electronAPI.onStyleChange((s) => {
       if (s === "single" || s === "triple") setStyleState(s as Style);
     });
+  }, []);
+
+  // 余量查询：启动时获取，监听自动刷新，监听显隐
+  useEffect(() => {
+    if (!window.electronAPI?.fetchBalance) return;
+    window.electronAPI.fetchBalance().then((d) => setBalance(d));
+    const off1 = window.electronAPI.onBalanceUpdate((d) => setBalance(d));
+    const off2 = window.electronAPI.onBalanceVisibleChange((v) => setBalanceVisible(v));
+    return () => { off1(); off2(); };
   }, []);
 
   // 用 Web Audio API 合成轻提示音，无需音频文件
@@ -130,6 +169,7 @@ export default function App() {
   }, [playSound]);
 
   useEffect(() => {
+    if (!window.electronAPI) return;
     const cleanup = window.electronAPI.onStateChange(applyState);
     return () => {
       cleanup();
@@ -139,21 +179,35 @@ export default function App() {
 
   const handleManualSelect = (light: Light) => {
     applyState(light);
-    window.electronAPI.setState(light);
+    window.electronAPI?.setState(light);
   };
 
   const dark = theme === "dark";
 
   useEffect(() => {
+    if (!window.electronAPI) return;
     const base = style === "single" ? 110 : 220;
     const withSettings = style === "single" ? 200 : 310;
     window.electronAPI.setWindowHeight(showSettings ? withSettings : base);
   }, [showSettings, style]);
 
+  const handleBalanceClick = () => {
+    if (window.electronAPI) window.electronAPI.openBalanceTooltip(balance || {});
+  };
+
+  const balancePercent = (() => {
+    if (!balance) return null;
+    if (balance.items?.length) {
+      const first = balance.items[0];
+      return first.isValid && first.extra ? Math.round(parseFloat(first.extra)) : null;
+    }
+    return balance.isValid && balance.extra ? Math.round(parseFloat(balance.extra)) : null;
+  })();
+
   const toggleMute = () => {
     const next = !muted;
     setMuted(next);
-    window.electronAPI.setMute(next);
+    window.electronAPI?.setMute(next);
   };
 
   const housing = dark
@@ -171,7 +225,7 @@ export default function App() {
   return (
     <div
       className="size-full flex flex-col items-center justify-start pt-3"
-      onMouseDown={() => window.electronAPI.focusApp()}
+      onMouseDown={() => window.electronAPI?.focusApp()}
       style={{
         fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
         background: "transparent",
@@ -352,6 +406,38 @@ export default function App() {
         </div>
         )}
 
+        {/* 余量徽章：左下角 */}
+        {balanceVisible && <button
+          className="no-drag"
+          onClick={handleBalanceClick}
+          style={{
+            position: "absolute", bottom: 4, left: 6,
+            minWidth: 28, height: 20, borderRadius: 10, border: "none",
+            padding: "0 4px",
+            background: balancePercent === null
+              ? "rgba(255,255,255,0.08)"
+              : balancePercent < 60
+                ? "rgba(48,209,88,0.15)"
+                : balancePercent < 85
+                  ? "rgba(255,159,10,0.15)"
+                  : "rgba(255,59,48,0.15)",
+            color: balancePercent === null
+              ? dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"
+              : balancePercent < 60
+                ? "#30D158"
+                : balancePercent < 85
+                  ? "#FF9F0A"
+                  : "#FF3B30",
+            fontSize: 10, fontWeight: 600, cursor: "pointer", display: "flex",
+            alignItems: "center", justifyContent: "center",
+            WebkitAppRegion: "no-drag",
+            fontVariantNumeric: "tabular-nums",
+          } as React.CSSProperties}
+          title="点击查看余量"
+        >
+          {balancePercent !== null ? balancePercent + "%" : "0%"}
+        </button>}
+
         {/* 设置按钮：悬停显示，右下角 */}
         <button
           className="no-drag"
@@ -417,7 +503,7 @@ export default function App() {
               onClick={() => {
                 const next = dark ? "light" : "dark";
                 setThemeState(next);
-                window.electronAPI.setTheme(next);
+                window.electronAPI?.setTheme(next);
               }}
               style={{
                 width: 32, height: 18, borderRadius: 9,

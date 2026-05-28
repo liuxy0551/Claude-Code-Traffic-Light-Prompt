@@ -27,4 +27,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setMute: (muted) => ipcRenderer.send('set-mute', muted),
   getStats: () => ipcRenderer.invoke('get-stats'),
   setWindowHeight: (h) => ipcRenderer.send('set-window-height', h),
+  fetchBalance: () => ipcRenderer.invoke('fetch-balance'),
+  openBalanceTooltip: (data) => ipcRenderer.send('open-balance-tooltip', data),
+  onBalanceUpdate: (callback) => {
+    const handler = (_, data) => callback(data)
+    ipcRenderer.on('balance-update', handler)
+    return () => ipcRenderer.removeListener('balance-update', handler)
+  },
+  onBalanceVisibleChange: (callback) => {
+    const handler = (_, visible) => callback(visible)
+    ipcRenderer.on('balance-visible-change', handler)
+    return () => ipcRenderer.removeListener('balance-visible-change', handler)
+  },
 })

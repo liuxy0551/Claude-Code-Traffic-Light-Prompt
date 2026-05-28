@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>余量详情</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-app-region: no-drag;
+    user-select: none;
+    overflow: hidden;
+  }
+  .panel {
+    position: absolute; inset: 4px;
+    background: linear-gradient(180deg, #2c2c2e 0%, #1c1c1e 100%);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 6px;
+    color: rgba(255,255,255,0.85);
+  }
+  .title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    -webkit-app-region: drag;
+  }
+  .title { font-size: 12px; font-weight: 600; opacity: 0.6; }
+  .close-btn {
+    -webkit-app-region: no-drag;
+    width: 18px; height: 18px; border-radius: 50%;
+    border: none; background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.5); font-size: 11px;
+    cursor: pointer; display: flex;
+    align-items: center; justify-content: center;
+    transition: background 0.2s;
+  }
+  .close-btn:hover { background: rgba(255,59,48,0.6); }
+  .percent {
+    font-size: 28px; font-weight: 700;
+    background: linear-gradient(135deg, #30D158 0%, #FF9F0A 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-align: center;
+    margin: 2px 0;
+    -webkit-app-region: drag;
+  }
+  .progress-bg {
+    height: 6px; border-radius: 3px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    -webkit-app-region: drag;
+  }
+  .progress-bar {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, #30D158 0%, #FF9F0A 70%, #FF3B30 100%);
+    transition: width 0.5s ease;
+  }
+  .details {
+    display: grid; grid-template-columns: auto 1fr;
+    gap: 2px 10px; font-size: 11px;
+    margin-top: 8px;
+    -webkit-app-region: drag;
+  }
+  .label { opacity: 0.5; text-align: right; }
+  .value { opacity: 0.85; font-variant-numeric: tabular-nums; }
+  .btn-row {
+    display: flex; justify-content: center; gap: 8px;
+    margin-top: 8px;
+  }
+  .refresh-btn, .settings-btn {
+    -webkit-app-region: no-drag;
+    padding: 4px 14px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.6);
+    font-size: 11px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .refresh-btn:hover, .settings-btn:hover {
+    background: rgba(255,255,255,0.12);
+    color: rgba(255,255,255,0.85);
+  }
+  .cookie-section {
+    margin-top: 6px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding-top: 8px;
+    -webkit-app-region: no-drag;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .cookie-input {
+    width: 100%; height: 80px; resize: none;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px; padding: 6px 8px;
+    color: rgba(255,255,255,0.75);
+    font-size: 10px; font-family: monospace;
+    outline: none; box-sizing: border-box;
+    -webkit-app-region: no-drag;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .cookie-input:focus { border-color: rgba(48,209,88,0.4); }
+  .cookie-actions {
+    display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 6px;
+    -webkit-app-region: no-drag;
+    user-select: none;
+  }
+  .cookie-save {
+    -webkit-app-region: no-drag;
+    padding: 3px 10px; border-radius: 6px;
+    border: none; background: rgba(48,209,88,0.2);
+    color: #30D158; font-size: 10px; cursor: pointer;
+    transition: background 0.2s;
+  }
+  .cookie-save:hover { background: rgba(48,209,88,0.35); }
+  .cookie-toast {
+    font-size: 10px; color: #30D158; opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .cookie-toast.show { opacity: 1; }
+  .error-state {
+    text-align: center; padding: 6px 0;
+    color: rgba(255,255,255,0.4); font-size: 12px;
+  }
+  .loading-state {
+    text-align: center; padding: 6px 0;
+    color: rgba(255,255,255,0.4); font-size: 12px;
+  }
+</style>
+</head>
+<body>
+  <div class="panel" id="root">
+    <div class="loading-state">加载中...</div>
+  </div>
+
+  <script>
+    var showCookie = false;
+    var cookieValue = '';
+
+    function renderBalance(data) {
+      var root = document.getElementById('root');
+      var items = (data && data.items && data.items.length) ? data.items : (data && data.isValid ? [data] : []);
+
+      if (!items.length) {
+        root.innerHTML =
+          '<div class="title-row">' +
+            '<span class="title">余量查询</span>' +
+            '<button class="close-btn" onclick="window.close()">×</button>' +
+          '</div>' +
+          '<div class="error-state">查询失败<br><span style="font-size:10px;opacity:0.6">' +
+          (data && data.error ? data.error : '请检查配置或设置 Cookie') +
+          '</span></div>' +
+          '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新</button>' +
+          '<button class="settings-btn" onclick="toggleCookie()">Cookie设置</button></div>' +
+          buildCookieSection();
+        if (window.tooltipAPI && window.tooltipAPI.resize) {
+          var h = 150;
+          if (showCookie) h += 120;
+          window.tooltipAPI.resize(h);
+        }
+        return;
+      }
+
+      var html = '<div class="title-row">' +
+        '<span class="title">余量查询</span>' +
+        '<button class="close-btn" onclick="window.close()">×</button>' +
+      '</div>';
+
+      for (var i = 0; i < items.length; i++) {
+        var d = items[i];
+        var pctNum = parseFloat(d.extra) || 0;
+        var pct = pctNum.toFixed(1);
+        var barColor = pctNum < 60 ? '#30D158' : pctNum < 85 ? '#FF9F0A' : '#FF3B30';
+        if (i > 0) {
+          html += '<div style="border-top:1px solid rgba(255,255,255,0.06);margin-top:8px;padding-top:8px"></div>';
+        }
+        html += '<div style="display:flex;align-items:center;gap:6px">' +
+          '<span style="font-size:11px;opacity:0.5;min-width:28px">' + (d.planName || '') + '</span>' +
+          '<div style="flex:1">' +
+            '<div class="progress-bg"><div class="progress-bar" style="width:' + Math.min(pctNum, 100) + '%;background:' + barColor + '"></div></div>' +
+          '</div>' +
+          '<span style="font-size:13px;font-weight:600;color:' + barColor + ';min-width:44px;text-align:right">' + pct + '%</span>' +
+        '</div>' +
+        '<div class="details">' +
+          '<span class="label">已用</span><span class="value">' + (d.used || 0).toFixed(2) + ' ' + (d.unit || '') + '</span>' +
+          '<span class="label">总量</span><span class="value">' + (d.total || 0).toFixed(2) + ' ' + (d.unit || '') + '</span>' +
+        '</div>';
+      }
+
+      html += '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新</button>' +
+        '<button class="settings-btn" onclick="toggleCookie()">Cookie设置</button></div>' +
+        buildCookieSection();
+
+      root.innerHTML = html;
+
+      // 高度动态计算
+      if (window.tooltipAPI && window.tooltipAPI.resize) {
+        var h = 80 + items.length * 90;
+        if (showCookie) h += 120;
+        window.tooltipAPI.resize(h);
+      }
+    }
+
+    function buildCookieSection() {
+      if (!showCookie) return '';
+      setTimeout(bindCookie, 50);
+      var escaped = cookieValue.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return '<div class="cookie-section">' +
+        '<textarea class="cookie-input" id="cookieInput" placeholder="粘贴 Cookie 值...">' + escaped + '</textarea>' +
+        '<div class="cookie-actions">' +
+          '<button class="cookie-save" onclick="saveCookie()">保存</button>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function bindCookie() {
+      var ta = document.getElementById('cookieInput');
+      if (!ta || ta._bound) return;
+      ta._bound = true;
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      ta.addEventListener('input', function() { cookieValue = ta.value; });
+      ta.addEventListener('keydown', function(e) {
+        if (e.metaKey || e.ctrlKey) {
+          if (e.key === 'v') {
+            e.preventDefault();
+            if (window.tooltipAPI && window.tooltipAPI.readClipboard) {
+              window.tooltipAPI.readClipboard().then(function(text) {
+                if (!text) return;
+                var s = ta.selectionStart, en = ta.selectionEnd;
+                ta.value = ta.value.substring(0, s) + text + ta.value.substring(en);
+                ta.selectionStart = ta.selectionEnd = s + text.length;
+                cookieValue = ta.value;
+              });
+            }
+          } else if (e.key === 'a') {
+            e.preventDefault();
+            ta.select();
+          }
+        }
+      });
+    }
+
+    function toggleCookie() {
+      showCookie = !showCookie;
+      renderBalance(window.__balanceData);
+    }
+
+    function saveCookie() {
+      var input = document.getElementById('cookieInput');
+      var val = input ? input.value.trim() : cookieValue.trim();
+      if (!val) return;
+      cookieValue = val;
+      if (window.tooltipAPI && window.tooltipAPI.updateCookie) {
+        window.tooltipAPI.updateCookie(val).then(function(res) {
+          if (res && res.ok) {
+            showCookie = false;
+            doRefresh();
+          }
+        });
+      }
+    }
+
+    function doRefresh() {
+      var btn = document.querySelector('.refresh-btn');
+      if (btn) { btn.textContent = '刷新中...'; btn.disabled = true; }
+      if (window.tooltipAPI && window.tooltipAPI.refreshBalance) {
+        window.tooltipAPI.refreshBalance().then(function(data) {
+          window.__balanceData = data;
+          renderBalance(data);
+        }).catch(function() {
+          if (btn) { btn.textContent = '刷新'; btn.disabled = false; }
+        });
+      }
+    }
+
+    // 初始数据由 main process 通过 executeJavaScript 注入
+    if (window.__balanceData) {
+      renderBalance(window.__balanceData);
+    }
+  </script>
+</body>
+</html>
