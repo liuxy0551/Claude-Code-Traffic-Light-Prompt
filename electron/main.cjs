@@ -10,6 +10,7 @@ const PID_FILE     = path.join(TMP, 'cc_traffic_light_electron.pid')
 const THEME_FILE   = path.join(TMP, 'cc_traffic_light_theme')
 const MUTE_FILE    = path.join(TMP, 'cc_traffic_light_mute')
 const STYLE_FILE   = path.join(TMP, 'cc_traffic_light_style')
+const COOKIE_FILE  = path.join(TMP, 'cc_traffic_light_cookie')
 // 统计文件存到 ~/.claude/，跨平台持久化，不放 /tmp 避免重启丢失
 const STATS_FILE   = path.join(os.homedir(), '.claude', 'cc_traffic_light_stats.json')
 const distPath     = path.join(__dirname, '../dist/index.html')
@@ -113,7 +114,18 @@ const DEFAULT_BALANCE_CONFIG = {
   }`,
 }
 
+function readSavedCookie() {
+  try {
+    return fs.existsSync(COOKIE_FILE) ? fs.readFileSync(COOKIE_FILE, 'utf-8').trim() : ''
+  } catch { return '' }
+}
+
 let balanceConfig = { ...DEFAULT_BALANCE_CONFIG }
+// 启动时回显已保存的 Cookie
+;(function() {
+  const saved = readSavedCookie()
+  if (saved) balanceConfig.request.headers.Cookie = saved
+})()
 
 function fetchBalanceData() {
   return new Promise((resolve) => {
@@ -575,8 +587,9 @@ ipcMain.on('open-balance-tooltip', (_, data) => {
   balanceTooltipWin.webContents.on('did-finish-load', () => {
     if (!balanceTooltipWin || balanceTooltipWin.isDestroyed()) return
     const encoded = encodeURIComponent(JSON.stringify(data))
+    const encodedCookie = encodeURIComponent(balanceConfig.request?.headers?.Cookie || '')
     balanceTooltipWin.webContents.executeJavaScript(
-      `window.__balanceData = JSON.parse(decodeURIComponent("${encoded}")); renderBalance && renderBalance(window.__balanceData)`
+      `window.__balanceData = JSON.parse(decodeURIComponent("${encoded}")); window.__savedCookie = decodeURIComponent("${encodedCookie}"); if(window.__savedCookie) cookieValue = window.__savedCookie; renderBalance && renderBalance(window.__balanceData)`
     )
   })
 
@@ -587,6 +600,12 @@ ipcMain.on('open-balance-tooltip', (_, data) => {
     balanceTooltipWin = null
     isTooltipOpen = false
     if (tray) tray.setContextMenu(buildTrayMenu(readTheme(), readStyle()))
+  })
+
+  balanceTooltipWin.on('blur', () => {
+    if (balanceTooltipWin && !balanceTooltipWin.isDestroyed()) {
+      balanceTooltipWin.close()
+    }
   })
 })
 
@@ -614,6 +633,7 @@ ipcMain.handle('update-balance-cookie', async (_, cookie) => {
     if (!balanceConfig.request) balanceConfig.request = {}
     if (!balanceConfig.request.headers) balanceConfig.request.headers = {}
     balanceConfig.request.headers.Cookie = cookie
+    try { fs.writeFileSync(COOKIE_FILE, cookie) } catch {}
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e.message }

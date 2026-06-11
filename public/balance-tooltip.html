@@ -140,6 +140,25 @@
   <script>
     var showCookie = false;
     var cookieValue = '';
+    var lastRefreshTime = Date.now();
+    var REFRESH_INTERVAL = 300000; // 5 min
+    var countdownTimer = null;
+
+    function getRemainingStr() {
+      var remaining = Math.max(0, REFRESH_INTERVAL - (Date.now() - lastRefreshTime));
+      var min = Math.floor(remaining / 60000);
+      var sec = Math.floor((remaining % 60000) / 1000);
+      if (min > 0) return min + 'min' + (sec > 0 ? sec + 's' : '');
+      return sec + 's';
+    }
+
+    function startCountdown() {
+      if (countdownTimer) clearInterval(countdownTimer);
+      countdownTimer = setInterval(function() {
+        var btn = document.querySelector('.refresh-btn');
+        if (btn && !btn.disabled) btn.textContent = '刷新 (' + getRemainingStr() + ')';
+      }, 1000);
+    }
 
     function renderBalance(data) {
       var root = document.getElementById('root');
@@ -154,7 +173,7 @@
           '<div class="error-state">查询失败<br><span style="font-size:10px;opacity:0.6">' +
           (data && data.error ? data.error : '请检查配置或设置 Cookie') +
           '</span></div>' +
-          '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新</button>' +
+          '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新 (' + getRemainingStr() + ')</button>' +
           '<button class="settings-btn" onclick="toggleCookie()">Cookie设置</button></div>' +
           buildCookieSection();
         if (window.tooltipAPI && window.tooltipAPI.resize) {
@@ -162,6 +181,7 @@
           if (showCookie) h += 120;
           window.tooltipAPI.resize(h);
         }
+        startCountdown();
         return;
       }
 
@@ -174,7 +194,7 @@
         var d = items[i];
         var pctNum = parseFloat(d.extra) || 0;
         var pct = pctNum.toFixed(1);
-        var barColor = pctNum < 60 ? '#30D158' : pctNum < 85 ? '#FF9F0A' : '#FF3B30';
+        var barColor = pctNum < 75 ? '#30D158' : pctNum < 90 ? '#FF9F0A' : '#FF3B30';
         if (i > 0) {
           html += '<div style="border-top:1px solid rgba(255,255,255,0.06);margin-top:8px;padding-top:8px"></div>';
         }
@@ -191,7 +211,7 @@
         '</div>';
       }
 
-      html += '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新</button>' +
+      html += '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新 (' + getRemainingStr() + ')</button>' +
         '<button class="settings-btn" onclick="toggleCookie()">Cookie设置</button></div>' +
         buildCookieSection();
 
@@ -203,6 +223,7 @@
         if (showCookie) h += 120;
         window.tooltipAPI.resize(h);
       }
+      startCountdown();
     }
 
     function buildCookieSection() {
@@ -269,10 +290,11 @@
       if (btn) { btn.textContent = '刷新中...'; btn.disabled = true; }
       if (window.tooltipAPI && window.tooltipAPI.refreshBalance) {
         window.tooltipAPI.refreshBalance().then(function(data) {
+          lastRefreshTime = Date.now();
           window.__balanceData = data;
           renderBalance(data);
         }).catch(function() {
-          if (btn) { btn.textContent = '刷新'; btn.disabled = false; }
+          if (btn) { btn.textContent = '刷新 (' + getRemainingStr() + ')'; btn.disabled = false; }
         });
       }
     }

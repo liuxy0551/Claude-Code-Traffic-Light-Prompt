@@ -416,16 +416,16 @@ export default function App() {
             padding: "0 4px",
             background: balancePercent === null
               ? "rgba(255,255,255,0.08)"
-              : balancePercent < 60
+              : balancePercent < 75
                 ? "rgba(48,209,88,0.15)"
-                : balancePercent < 85
+                : balancePercent < 90
                   ? "rgba(255,159,10,0.15)"
                   : "rgba(255,59,48,0.15)",
             color: balancePercent === null
               ? dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"
-              : balancePercent < 60
+              : balancePercent < 75
                 ? "#30D158"
-                : balancePercent < 85
+                : balancePercent < 90
                   ? "#FF9F0A"
                   : "#FF3B30",
             fontSize: 10, fontWeight: 600, cursor: "pointer", display: "flex",
