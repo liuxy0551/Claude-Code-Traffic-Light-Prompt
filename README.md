@@ -3,6 +3,8 @@
 
   Agent（Claude Code / Codex）的红绿灯状态提示器，支持用量查询。
 
+  ![效果图](public/demo.gif)
+
   ## 功能特性
 
   - 🔴 红灯：思考中
