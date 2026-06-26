@@ -1,0 +1,99 @@
+electron/preload.cjs
+  s_a2ee6f6e3cdff6::t_694bec78ca6f21 73-80
+  s_a2ee6f6e3cdff6::t_3336d6ac716e55 66-72
+  s_a2ee6f6e3cdff6::t_d3aafc032ec5f6 42-65
+package.json
+  h_0c940a947252a6 4
+.npmrc
+  s_2c8cf1978498c1::t_cdc87b75c2bddd 1
+electron/tooltip-preload.cjs
+  s_a2ee6f6e3cdff6::t_9be5aff38b9af8 15
+  s_a2ee6f6e3cdff6::t_fc63156b136262 3,5,8-13
+README.md
+  h_0c940a947252a6 16,18-19,21-23
+public/balance-tooltip.html
+  s_a2ee6f6e3cdff6::t_df2965ba095a6c 170,189
+  s_a2ee6f6e3cdff6::t_f404f0df1a3eb8 5
+electron/main.cjs
+  s_a2ee6f6e3cdff6::t_730b99373f141f 980-985
+  s_a2ee6f6e3cdff6::t_e547ea8cec6eef 1102-1112
+  s_a2ee6f6e3cdff6::t_40bcea4e15bbb8 186-188,198-201,203-204,269-270,272-273,276,278-282,284,303,305-322,324-327,334-339
+  s_a2ee6f6e3cdff6::t_cd985e2836e6d4 277
+  s_a2ee6f6e3cdff6::t_ee3921d1fa82c2 297
+  s_a2ee6f6e3cdff6::t_519d4391318c3e 567,580
+  s_a2ee6f6e3cdff6::t_4cd76e8fb357be 901-979
+  s_a2ee6f6e3cdff6::t_40907cfff1214f 202,205-243,245-246,248-268,291-296,298-302,323
+  s_a2ee6f6e3cdff6::t_dc4a2dcd5fdcd9 14
+  s_a2ee6f6e3cdff6::t_12573a98a2eb79 271
+  s_a2ee6f6e3cdff6::t_d7a4ec9c6ba46e 560,568-569,571,573-579,581-584,586-587,589-592,594-597,600
+  s_a2ee6f6e3cdff6::t_2edb481441a30a 244
+  s_a2ee6f6e3cdff6::t_316492e6dfed94 559,562-566,570,588,599,601-606,608-609,611-616,619-620,622-644,646-648,650-689,691-693,695,719,721-729,733-734,736,767,771,784
+  s_a2ee6f6e3cdff6::t_ecfcd27336679d 546-556,572,585,598
+  s_a2ee6f6e3cdff6::t_7943482ffff606 189-197
+  s_a2ee6f6e3cdff6::t_1da0fff5644d66 274-275,283,285-290,304,328-333
+  s_a2ee6f6e3cdff6::t_9feebd18efbc22 125-130
+  s_a2ee6f6e3cdff6::t_5ef41007b76078 247
+  s_a2ee6f6e3cdff6::t_a09fb484e43878 15
+  h_0c940a947252a6 593
+  s_a2ee6f6e3cdff6::t_feca752bf83b83 898-900
+public/chatgpt-tooltip.html
+  s_a2ee6f6e3cdff6::t_53223ae2bbc4c0 255
+  s_a2ee6f6e3cdff6::t_4e7f277df51506 209,212
+  s_a2ee6f6e3cdff6::t_c3952bbb7ad62f 241-244
+  s_a2ee6f6e3cdff6::t_10dfdefeecff2c 210-211
+  s_a2ee6f6e3cdff6::t_0800d1a9ec9e1f 240,245
+  s_a2ee6f6e3cdff6::t_21ddfcb7b7dc4c 256
+  s_a2ee6f6e3cdff6::t_1871d72136bbac 207,234
+  s_a2ee6f6e3cdff6::t_159e7126dcd538 204
+  s_a2ee6f6e3cdff6::t_6354ccc5bb17e1 85
+  s_a2ee6f6e3cdff6::t_044b5d0fc0f07d 1-4,6-84,86-199,201-203,205-206,208,213-218,220-233,235-239,246-254,257-336
+  s_a2ee6f6e3cdff6::t_2136955e8fc1a3 5
+  s_a2ee6f6e3cdff6::t_344b610afa6e32 200,219
+src/app/App.tsx
+  s_a2ee6f6e3cdff6::t_1ee3d6ea2e70a3 93
+  s_a2ee6f6e3cdff6::t_fd4a1b8d16277e 94
+  s_a2ee6f6e3cdff6::t_1ea2489a2b6d35 502,504-505
+  s_a2ee6f6e3cdff6::t_a915aa22a9c834 132-138
+  s_a2ee6f6e3cdff6::t_a09c6066177c7d 6
+  s_a2ee6f6e3cdff6::t_dfa8dfb6fac794 447-488
+  s_a2ee6f6e3cdff6::t_a11797fd9446cf 491-496,498-501,503,506-518,520-523,526-531,533-536,538,541-553,555-558
+  s_a2ee6f6e3cdff6::t_90887864e0d0c9 525
+  s_a2ee6f6e3cdff6::t_c7c8c956b849b5 139-148,155-162
+  s_a2ee6f6e3cdff6::t_4921c4239f017e 537,539-540
+  s_a2ee6f6e3cdff6::t_bd209e41124adc 70-72
+  s_a2ee6f6e3cdff6::t_b39328d8b395b4 446
+  s_a2ee6f6e3cdff6::t_24fa4e621a5f11 63-69
+  s_a2ee6f6e3cdff6::t_52fb5ecb47982b 29-42
+  s_a2ee6f6e3cdff6::t_8ebc04489bdf06 149-154
+  s_a2ee6f6e3cdff6::t_1e15a1b54bf5bd 247-248
+  s_a2ee6f6e3cdff6::t_0bc0e6d7753c61 490
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "09e9ffb6731502df8f0f96e2baf721bf6b6a2ba5",
+  "prompts": {},
+  "humans": {
+    "h_0c940a947252a6": {
+      "author": "liuyi <liuyi@dtstack.com>"
+    }
+  },
+  "sessions": {
+    "s_2c8cf1978498c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1ce47b54-60fe-470f-921a-25f4744889c9",
+        "model": "mimo-v2.5-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    },
+    "s_a2ee6f6e3cdff6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ecb7e714-70e9-4bc5-b46b-dbd13e052b3d",
+        "model": "mimo-v2.5-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
