@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>mimo 用量</title>
+<title>MiMo 用量</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -141,8 +141,15 @@
     var showCookie = false;
     var cookieValue = '';
     var lastRefreshTime = Date.now();
-    var REFRESH_INTERVAL = 300000; // 5 min
+    var REFRESH_INTERVAL = 180000; // 默认 3 min，会从主进程获取
     var countdownTimer = null;
+
+    // 从主进程获取刷新间隔
+    if (window.tooltipAPI && window.tooltipAPI.getPollInterval) {
+      window.tooltipAPI.getPollInterval().then(function(minutes) {
+        REFRESH_INTERVAL = minutes * 60000;
+      });
+    }
 
     function getRemainingStr() {
       var remaining = Math.max(0, REFRESH_INTERVAL - (Date.now() - lastRefreshTime));
@@ -167,7 +174,7 @@
       if (!items.length) {
         root.innerHTML =
           '<div class="title-row">' +
-            '<span class="title">mimo 用量</span>' +
+            '<span class="title">MiMo 用量</span>' +
             '<button class="close-btn" onclick="window.close()">×</button>' +
           '</div>' +
           '<div class="error-state">查询失败<br><span style="font-size:10px;opacity:0.6">' +
@@ -186,7 +193,7 @@
       }
 
       var html = '<div class="title-row">' +
-        '<span class="title">mimo 用量</span>' +
+        '<span class="title">MiMo 用量</span>' +
         '<button class="close-btn" onclick="window.close()">×</button>' +
       '</div>';
 

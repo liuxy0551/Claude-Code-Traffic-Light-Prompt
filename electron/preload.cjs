@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setMute: (muted) => ipcRenderer.send('set-mute', muted),
   getStats: () => ipcRenderer.invoke('get-stats'),
   setWindowHeight: (h) => ipcRenderer.send('set-window-height', h),
+  setWindowWidth: (w) => ipcRenderer.send('set-window-width', w),
   fetchBalance: () => ipcRenderer.invoke('fetch-balance'),
   openBalanceTooltip: (data) => ipcRenderer.send('open-balance-tooltip', data),
   onBalanceUpdate: (callback) => {
@@ -64,7 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('open-chatgpt-tooltip-from-tray', handler)
   },
 
-  // 从托盘菜单打开 MIMO tooltip
+  // 从托盘菜单打开 MiMo tooltip
   onOpenBalanceTooltipFromTray: (callback) => {
     const handler = (_, data) => callback(data)
     ipcRenderer.on('open-balance-tooltip-from-tray', handler)

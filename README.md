@@ -1,23 +1,40 @@
 
-  # 红绿灯 UI 设计
+  # Agent 红绿灯
 
-  This is a code bundle for 红绿灯 UI 设计. The original project is available at https://www.figma.com/design/arIlJyZSQE3DeNg08VUGIy/%E7%BA%A2%E7%BB%BF%E7%81%AF-UI-%E8%AE%BE%E8%AE%A1.
+  Agent（Claude Code / Codex）的红绿灯状态提示器，支持用量查询。
 
-  ## Running the code
+  ## 功能特性
 
-  Run `npm i` to install the dependencies.
+  - 🔴 红灯：思考中
+  - 🟡 黄灯：等待中
+  - 🟢 绿灯：已完成
+  - 📊 用量查询（MiMo / Codex）
+  - 🎨 多种样式（单灯 / 横版三灯 / 竖版三灯）
 
-  Run `npm run dev` to start the development server.
+  ## 支持的工具
 
-  Run `rm -rf dist && NO_PROXY=localhost npx electron .` to run the application.
+  - [x] Claude Code
+  - [x] Codex
 
-  Run `npm run dist` to build the application.
+  ## 运行
+
+  ```bash
+  npm i          # 安装依赖
+  npm run dev    # 开发模式
+  npm start      # 构建并运行
+  npm run dist   # 打包
+  ```
 
   ## 用量查询
 
-  - 支持查询 Xiaomi Mimo 用量：https://github.com/farion1231/cc-switch/issues/2488#issuecomment-4429924018
-  - 支持查询 codex 用量
+  - [x] 支持查询 Codex 用量
+  - [x] 支持查询 Xiaomi MiMo 用量
+  - [x] 支持横版三灯
+  - [x] 支持 ClaudeCode hooks
+  - [x] 支持 Codex hooks
 
-  ![mimo 用量查询](public/mimo-usage.png)
+  ![Codex 用量查询](public/codex-usage.png)
 
-  ![codex 用量查询](public/codex-usage.png)
+  ![MiMo 用量查询](public/mimo-usage.png)
+
+  ![横版三灯](public/horizontal.png)

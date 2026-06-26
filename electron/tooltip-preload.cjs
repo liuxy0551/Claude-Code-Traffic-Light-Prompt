@@ -1,8 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
-// 通用的 tooltip API，同时支持 MIMO 和 ChatGPT
+// 通用的 tooltip API，同时支持 MiMo 和 ChatGPT
 contextBridge.exposeInMainWorld('tooltipAPI', {
-  // MIMO 相关
+  // MiMo 相关
   refreshBalance: () => ipcRenderer.invoke('refresh-balance-tooltip'),
   updateCookie: (cookie) => ipcRenderer.invoke('update-balance-cookie', cookie),
 
@@ -14,4 +14,5 @@ contextBridge.exposeInMainWorld('tooltipAPI', {
   resize: (height) => ipcRenderer.send('resize-balance-tooltip', height),
   resizeChatGPT: (height) => ipcRenderer.send('resize-chatgpt-tooltip', height),
   readClipboard: () => ipcRenderer.invoke('read-clipboard'),
+  getPollInterval: () => ipcRenderer.invoke('get-poll-interval'),
 })

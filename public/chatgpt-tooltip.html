@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>codex 用量</title>
+<title>Codex 用量</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -144,8 +144,15 @@
     var showToken = false;
     var tokenValue = '';
     var lastRefreshTime = Date.now();
-    var REFRESH_INTERVAL = 300000; // 5 min
+    var REFRESH_INTERVAL = 180000; // 默认 3 min，会从主进程获取
     var countdownTimer = null;
+
+    // 从主进程获取刷新间隔
+    if (window.tooltipAPI && window.tooltipAPI.getPollInterval) {
+      window.tooltipAPI.getPollInterval().then(function(minutes) {
+        REFRESH_INTERVAL = minutes * 60000;
+      });
+    }
 
     function getRemainingStr() {
       var remaining = Math.max(0, REFRESH_INTERVAL - (Date.now() - lastRefreshTime));
@@ -172,7 +179,7 @@
       if (h < 24) return h + ' 小时' + (m > 0 ? ' ' + m + ' 分钟' : '');
       var d = Math.floor(h / 24);
       var rh = h % 24;
-      return d + ' 天' + (rh > 0 ? ' ' + rh + ' 小时' : '');
+      return d + ' 天' + (rh > 0 ? ' ' + rh + ' 小时' : '') + (m > 0 ? ' ' + m + ' 分钟' : '');
     }
 
     function renderWindow(name, windowData) {
@@ -200,18 +207,18 @@
       if (!data || !data.isValid) {
         root.innerHTML =
           '<div class="title-row">' +
-            '<span class="title">codex 用量</span>' +
+            '<span class="title">Codex 用量</span>' +
             '<button class="close-btn" onclick="window.close()">×</button>' +
           '</div>' +
           '<div class="error-state">查询失败<br><span style="font-size:10px;opacity:0.6">' +
           (data && data.error ? data.error : '请检查 token 设置') +
           '</span></div>' +
           '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新 (' + getRemainingStr() + ')</button>' +
-          '<button class="settings-btn" onclick="toggleToken()">token设置</button></div>' +
+          '<button class="settings-btn" onclick="toggleToken()">Token设置</button></div>' +
           buildTokenSection();
         if (window.tooltipAPI && window.tooltipAPI.resizeChatGPT) {
-          var h = 120;
-          if (showToken) h += 140;
+          var h = 145;
+          if (showToken) h += 145;
           window.tooltipAPI.resizeChatGPT(h);
         }
         startCountdown();
@@ -219,7 +226,7 @@
       }
 
       var html = '<div class="title-row">' +
-        '<span class="title">codex 用量</span>' +
+        '<span class="title">Codex 用量</span>' +
         '<button class="close-btn" onclick="window.close()">×</button>' +
       '</div>';
 
@@ -234,7 +241,7 @@
       }
 
       html += '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新 (' + getRemainingStr() + ')</button>' +
-        '<button class="settings-btn" onclick="toggleToken()">token设置</button></div>' +
+        '<button class="settings-btn" onclick="toggleToken()">Token设置</button></div>' +
         buildTokenSection();
 
       root.innerHTML = html;
@@ -244,7 +251,7 @@
         var h = 100;
         if (data.primary) h += 50;
         if (data.secondary) h += 50;
-        if (showToken) h += 140;
+        if (showToken) h += 130;
         window.tooltipAPI.resizeChatGPT(h);
       }
       startCountdown();
@@ -254,9 +261,10 @@
       if (!showToken) return '';
       setTimeout(bindToken, 50);
       var escaped = tokenValue.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      var sourceHint = window.__manualToken ? '（当前使用手动设置的 Token）' : '（当前从 ~/.codex/auth.json 读取）';
       return '<div class="token-section">' +
-        '<div style="font-size:10px;opacity:0.5;margin-bottom:4px">Access Token（自动从 ~/.codex/auth.json 读取）</div>' +
-        '<textarea class="token-input" id="tokenInput" placeholder="留空则自动从 ~/.codex/auth.json 读取...">' + escaped + '</textarea>' +
+        '<div style="font-size:10px;opacity:0.5;margin-bottom:4px">Access Token ' + sourceHint + '</div>' +
+        '<textarea class="token-input" id="tokenInput" placeholder="留空则从 ~/.codex/auth.json 读取...">' + escaped + '</textarea>' +
         '<div class="token-actions">' +
           '<span class="token-toast" id="tokenToast">已保存</span>' +
           '<button class="token-save" onclick="saveToken()">保存</button>' +
@@ -299,18 +307,27 @@
     function saveToken() {
       var input = document.getElementById('tokenInput');
       var val = input ? input.value.trim() : tokenValue.trim();
-      if (!val) return;
       tokenValue = val;
       if (window.tooltipAPI && window.tooltipAPI.updateToken) {
         window.tooltipAPI.updateToken(val).then(function(res) {
           if (res && res.ok) {
             var toast = document.getElementById('tokenToast');
             if (toast) {
+              toast.textContent = '已保存';
+              toast.style.color = '#30D158';
               toast.classList.add('show');
               setTimeout(function() { toast.classList.remove('show'); }, 2000);
             }
             showToken = false;
             doRefresh();
+          } else {
+            var toast = document.getElementById('tokenToast');
+            if (toast) {
+              toast.textContent = res.error || 'Token 无效';
+              toast.style.color = '#FF3B30';
+              toast.classList.add('show');
+              setTimeout(function() { toast.classList.remove('show'); }, 3000);
+            }
           }
         });
       }

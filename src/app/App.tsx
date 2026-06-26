@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 type Light = "red" | "yellow" | "green";
 type Theme = "dark" | "light";
-type Style = "triple" | "single";
+type Style = "single" | "triple-vertical" | "triple-horizontal";
 type UsageMode = "mimo" | "chatgpt" | "none";
 
 interface BalanceItem {
@@ -83,9 +83,9 @@ const LIGHT_CONFIG = {
 const ORDER: Light[] = ["red", "yellow", "green"];
 
 export default function App() {
-  const [active, setActive]           = useState<Light>("yellow");
+  const [active, setActive]           = useState<Light>("green");
   const [theme, setThemeState]        = useState<Theme>("dark");
-  const [style, setStyleState]        = useState<Style>("triple");
+  const [style, setStyleState]        = useState<Style>("triple-vertical");
   const [greenSteady, setGreenSteady] = useState(false);
   const [muted, setMuted]             = useState(false);
   const [balance, setBalance]         = useState<BalanceData | null>(null);
@@ -102,7 +102,7 @@ export default function App() {
     });
     window.electronAPI.getMute().then((m) => setMuted(m));
     window.electronAPI.getStyle().then((s) => {
-      if (s === "single" || s === "triple") setStyleState(s as Style);
+      if (s === "single" || s === "triple-vertical" || s === "triple-horizontal") setStyleState(s as Style);
     });
   }, []);
 
@@ -116,7 +116,7 @@ export default function App() {
   useEffect(() => {
     if (!window.electronAPI) return;
     return window.electronAPI.onStyleChange((s) => {
-      if (s === "single" || s === "triple") setStyleState(s as Style);
+      if (s === "single" || s === "triple-vertical" || s === "triple-horizontal") setStyleState(s as Style);
     });
   }, []);
 
@@ -146,7 +146,7 @@ export default function App() {
       setChatgptUsage(d);
       window.electronAPI?.openChatGPTTooltip(d);
     });
-    // 从托盘菜单打开 MIMO tooltip
+    // 从托盘菜单打开 MiMo tooltip
     const off3 = window.electronAPI.onOpenBalanceTooltipFromTray((d) => {
       setBalance(d);
       window.electronAPI?.openBalanceTooltip(d);
@@ -243,8 +243,21 @@ export default function App() {
 
   useEffect(() => {
     if (!window.electronAPI) return;
-    const base = style === "single" ? 110 : 220;
-    window.electronAPI.setWindowHeight(base);
+    let height, width;
+    if (style === "single") {
+      height = 110; width = 100;
+    } else if (style === "triple-horizontal") {
+      height = 130; width = 220;
+    } else {
+      height = 220; width = 100;
+    }
+    window.electronAPI.setWindowHeight(height);
+    // 横版需要更宽的窗口
+    if (style === "triple-horizontal") {
+      window.electronAPI.setWindowWidth(width);
+    } else {
+      window.electronAPI.setWindowWidth(100);
+    }
   }, [style]);
 
   const housing = dark
@@ -292,7 +305,7 @@ export default function App() {
       {/* 外壳容器：可拖拽，灯泡单独设为 no-drag */}
       <div
         className="relative flex flex-col items-center"
-        style={{ ...housing, borderRadius: 24, width: 80, padding: style === "single" ? "16px 0 16px" : "16px 0 20px", WebkitAppRegion: "drag" } as React.CSSProperties}
+        style={{ ...housing, borderRadius: 20, width: style === "triple-horizontal" ? 200 : 80, padding: style === "single" ? "16px 0 16px" : "16px 0 20px", WebkitAppRegion: "drag" } as React.CSSProperties}
       >
         {style === "single" ? (
           /* 单灯模式：一个灯显示当前状态颜色 */
@@ -355,7 +368,7 @@ export default function App() {
           </div>
         ) : (
           /* 三灯模式 */
-          <div className="flex flex-col items-center gap-3">
+          <div className={style === "triple-horizontal" ? "flex flex-row items-center gap-3" : "flex flex-col items-center gap-3"}>
           {ORDER.map((light) => {
             const cfg = LIGHT_CONFIG[light];
             const isActive = active === light;
@@ -443,7 +456,7 @@ export default function App() {
         </div>
         )}
 
-        {/* mimo 用量：左下角 */}
+        {/* MiMo 用量：左下角 */}
         {usageMode === "mimo" && balanceVisible && (() => {
           const balancePercent = (() => {
             if (!balance) return null;
@@ -458,9 +471,9 @@ export default function App() {
               className="no-drag"
               onClick={() => window.electronAPI?.openBalanceTooltip(balance || {})}
               style={{
-                position: "absolute", bottom: 4, left: 6,
-                minWidth: 28, height: 20, borderRadius: 10, border: "none",
-                padding: "0 4px",
+                position: "absolute", bottom: 2, left: 4,
+                minWidth: 28, height: 20, borderRadius: 8, border: "none",
+                padding: "0 3px",
                 background: balancePercent === null
                   ? "rgba(255,255,255,0.08)"
                   : balancePercent < 75
@@ -487,7 +500,7 @@ export default function App() {
           );
         })()}
 
-        {/* codex 5h 用量：左下角 */}
+        {/* Codex 5h 用量：左下角 */}
         {usageMode === "chatgpt" && (() => {
           const pct = chatgptUsage?.isValid && chatgptUsage.primary ? chatgptUsage.primary.usedPercent : 0;
           return (
@@ -495,9 +508,9 @@ export default function App() {
               className="no-drag"
               onClick={() => window.electronAPI?.openChatGPTTooltip(chatgptUsage || { isValid: false, error: '未查询' })}
               style={{
-                position: "absolute", bottom: 4, left: 6,
-                minWidth: 28, height: 20, borderRadius: 10, border: "none",
-                padding: "0 4px",
+                position: "absolute", bottom: 2, left: 4,
+                minWidth: 28, height: 20, borderRadius: 8, border: "none",
+                padding: "0 3px",
                 background: pct < 75
                   ? "rgba(48,209,88,0.15)"
                   : pct < 90
@@ -522,7 +535,7 @@ export default function App() {
           );
         })()}
 
-        {/* codex 周用量：右下角 */}
+        {/* Codex 周用量：右下角 */}
         {usageMode === "chatgpt" && (() => {
           const pct = chatgptUsage?.isValid && chatgptUsage.secondary ? chatgptUsage.secondary.usedPercent : 0;
           return (
@@ -530,9 +543,9 @@ export default function App() {
               className="no-drag"
               onClick={() => window.electronAPI?.openChatGPTTooltip(chatgptUsage || { isValid: false, error: '未查询' })}
               style={{
-                position: "absolute", bottom: 4, right: 6,
-                minWidth: 28, height: 20, borderRadius: 10, border: "none",
-                padding: "0 4px",
+                position: "absolute", bottom: 2, right: 4,
+                minWidth: 28, height: 20, borderRadius: 8, border: "none",
+                padding: "0 3px",
                 background: pct < 75
                   ? "rgba(48,209,88,0.15)"
                   : pct < 90

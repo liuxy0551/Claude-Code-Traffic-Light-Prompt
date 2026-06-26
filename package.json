@@ -1,7 +1,7 @@
 {
-  "name": "cc-traffic-light",
+  "name": "agent-traffic-light",
   "private": true,
-  "version": "1.5.0",
+  "version": "1.6.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -15,8 +15,8 @@
     "dist:win": "npm run build && electron-builder --win nsis --publish never"
   },
   "build": {
-    "appId": "com.cc.traffic-light",
-    "productName": "CC 红绿灯",
+    "appId": "com.ai.traffic-light",
+    "productName": "Agent 红绿灯",
     "copyright": "Copyright © 2025",
     "files": [
       "dist/**/*",
@@ -42,7 +42,7 @@
       "createStartMenuShortcut": true
     },
     "dmg": {
-      "title": "CC 红绿灯",
+      "title": "Agent 红绿灯",
       "window": { "width": 540, "height": 380 }
     },
     "directories": {
