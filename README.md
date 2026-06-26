@@ -13,8 +13,11 @@
 
   Run `npm run dist` to build the application.
 
-  ## 余量查询
+  ## 用量查询
 
-  支持查询 Xiaomi Mimo 用量：https://github.com/farion1231/cc-switch/issues/2488#issuecomment-4429924018
+  - 支持查询 Xiaomi Mimo 用量：https://github.com/farion1231/cc-switch/issues/2488#issuecomment-4429924018
+  - 支持查询 codex 用量
 
-  ![余量查询](public/mimo-usage.png)
+  ![mimo 用量查询](public/mimo-usage.png)
+
+  ![codex 用量查询](public/codex-usage.png)

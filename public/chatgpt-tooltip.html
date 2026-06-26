@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>mimo 用量</title>
+<title>codex 用量</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -37,16 +37,6 @@
     transition: background 0.2s;
   }
   .close-btn:hover { background: rgba(255,59,48,0.6); }
-  .percent {
-    font-size: 28px; font-weight: 700;
-    background: linear-gradient(135deg, #30D158 0%, #FF9F0A 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    text-align: center;
-    margin: 2px 0;
-    -webkit-app-region: drag;
-  }
   .progress-bg {
     height: 6px; border-radius: 3px;
     background: rgba(255,255,255,0.08);
@@ -61,7 +51,7 @@
   .details {
     display: grid; grid-template-columns: auto 1fr;
     gap: 2px 10px; font-size: 11px;
-    margin-top: 8px;
+    margin-top: 4px;
     -webkit-app-region: drag;
   }
   .label { opacity: 0.5; text-align: right; }
@@ -83,7 +73,7 @@
     background: rgba(255,255,255,0.12);
     color: rgba(255,255,255,0.85);
   }
-  .cookie-section {
+  .token-section {
     margin-top: 6px;
     border-top: 1px solid rgba(255,255,255,0.06);
     padding-top: 8px;
@@ -91,7 +81,7 @@
     user-select: text;
     -webkit-user-select: text;
   }
-  .cookie-input {
+  .token-input {
     width: 100%; height: 80px; resize: none;
     background: rgba(255,255,255,0.04);
     border: 1px solid rgba(255,255,255,0.1);
@@ -103,25 +93,25 @@
     user-select: text;
     -webkit-user-select: text;
   }
-  .cookie-input:focus { border-color: rgba(48,209,88,0.4); }
-  .cookie-actions {
+  .token-input:focus { border-color: rgba(48,209,88,0.4); }
+  .token-actions {
     display: flex; justify-content: flex-end; align-items: center; gap: 6px; margin-top: 6px;
     -webkit-app-region: no-drag;
     user-select: none;
   }
-  .cookie-save {
+  .token-save {
     -webkit-app-region: no-drag;
     padding: 3px 10px; border-radius: 6px;
     border: none; background: rgba(48,209,88,0.2);
     color: #30D158; font-size: 10px; cursor: pointer;
     transition: background 0.2s;
   }
-  .cookie-save:hover { background: rgba(48,209,88,0.35); }
-  .cookie-toast {
+  .token-save:hover { background: rgba(48,209,88,0.35); }
+  .token-toast {
     font-size: 10px; color: #30D158; opacity: 0;
     transition: opacity 0.3s;
   }
-  .cookie-toast.show { opacity: 1; }
+  .token-toast.show { opacity: 1; }
   .error-state {
     text-align: center; padding: 6px 0;
     color: rgba(255,255,255,0.4); font-size: 12px;
@@ -129,6 +119,19 @@
   .loading-state {
     text-align: center; padding: 6px 0;
     color: rgba(255,255,255,0.4); font-size: 12px;
+  }
+  .window-section {
+    margin-bottom: 8px;
+  }
+  .window-header {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 4px;
+  }
+  .window-name {
+    font-size: 11px; opacity: 0.5; min-width: 32px;
+  }
+  .window-percent {
+    font-size: 13px; font-weight: 600; min-width: 44px; text-align: right;
   }
 </style>
 </head>
@@ -138,8 +141,8 @@
   </div>
 
   <script>
-    var showCookie = false;
-    var cookieValue = '';
+    var showToken = false;
+    var tokenValue = '';
     var lastRefreshTime = Date.now();
     var REFRESH_INTERVAL = 300000; // 5 min
     var countdownTimer = null;
@@ -160,90 +163,113 @@
       }, 1000);
     }
 
-    function renderBalance(data) {
-      var root = document.getElementById('root');
-      var items = (data && data.items && data.items.length) ? data.items : (data && data.isValid ? [data] : []);
+    function formatResetTime(seconds) {
+      if (seconds < 60) return seconds + ' 秒';
+      var min = Math.ceil(seconds / 60);
+      if (min < 60) return min + ' 分钟';
+      var h = Math.floor(min / 60);
+      var m = min % 60;
+      if (h < 24) return h + ' 小时' + (m > 0 ? ' ' + m + ' 分钟' : '');
+      var d = Math.floor(h / 24);
+      var rh = h % 24;
+      return d + ' 天' + (rh > 0 ? ' ' + rh + ' 小时' : '');
+    }
 
-      if (!items.length) {
+    function renderWindow(name, windowData) {
+      var pct = windowData.usedPercent;
+      var barColor = pct < 75 ? '#30D158' : pct < 90 ? '#FF9F0A' : '#FF3B30';
+      var resetStr = formatResetTime(windowData.resetAfterSeconds);
+
+      return '<div class="window-section">' +
+        '<div class="window-header">' +
+          '<span class="window-name">' + name + '</span>' +
+          '<div style="flex:1">' +
+            '<div class="progress-bg"><div class="progress-bar" style="width:' + Math.min(pct, 100) + '%;background:' + barColor + '"></div></div>' +
+          '</div>' +
+          '<span class="window-percent" style="color:' + barColor + '">' + pct + '%</span>' +
+        '</div>' +
+        '<div class="details">' +
+          '<span class="label">重置</span><span class="value">' + resetStr + '后</span>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function renderUsage(data) {
+      var root = document.getElementById('root');
+
+      if (!data || !data.isValid) {
         root.innerHTML =
           '<div class="title-row">' +
-            '<span class="title">mimo 用量</span>' +
+            '<span class="title">codex 用量</span>' +
             '<button class="close-btn" onclick="window.close()">×</button>' +
           '</div>' +
           '<div class="error-state">查询失败<br><span style="font-size:10px;opacity:0.6">' +
-          (data && data.error ? data.error : '请检查配置或设置 Cookie') +
+          (data && data.error ? data.error : '请检查 token 设置') +
           '</span></div>' +
           '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新 (' + getRemainingStr() + ')</button>' +
-          '<button class="settings-btn" onclick="toggleCookie()">Cookie设置</button></div>' +
-          buildCookieSection();
-        if (window.tooltipAPI && window.tooltipAPI.resize) {
-          var h = 150;
-          if (showCookie) h += 120;
-          window.tooltipAPI.resize(h);
+          '<button class="settings-btn" onclick="toggleToken()">token设置</button></div>' +
+          buildTokenSection();
+        if (window.tooltipAPI && window.tooltipAPI.resizeChatGPT) {
+          var h = 120;
+          if (showToken) h += 140;
+          window.tooltipAPI.resizeChatGPT(h);
         }
         startCountdown();
         return;
       }
 
       var html = '<div class="title-row">' +
-        '<span class="title">mimo 用量</span>' +
+        '<span class="title">codex 用量</span>' +
         '<button class="close-btn" onclick="window.close()">×</button>' +
       '</div>';
 
-      for (var i = 0; i < items.length; i++) {
-        var d = items[i];
-        var pctNum = parseFloat(d.extra) || 0;
-        var pct = pctNum.toFixed(1);
-        var barColor = pctNum < 75 ? '#30D158' : pctNum < 90 ? '#FF9F0A' : '#FF3B30';
-        if (i > 0) {
-          html += '<div style="border-top:1px solid rgba(255,255,255,0.06);margin-top:8px;padding-top:8px"></div>';
-        }
-        html += '<div style="display:flex;align-items:center;gap:6px">' +
-          '<span style="font-size:11px;opacity:0.5;min-width:28px">' + (d.planName || '') + '</span>' +
-          '<div style="flex:1">' +
-            '<div class="progress-bg"><div class="progress-bar" style="width:' + Math.min(pctNum, 100) + '%;background:' + barColor + '"></div></div>' +
-          '</div>' +
-          '<span style="font-size:13px;font-weight:600;color:' + barColor + ';min-width:44px;text-align:right">' + pct + '%</span>' +
-        '</div>' +
-        '<div class="details">' +
-          '<span class="label">已用</span><span class="value">' + (d.used || 0).toFixed(2) + ' ' + (d.unit || '') + '</span>' +
-          '<span class="label">总量</span><span class="value">' + (d.total || 0).toFixed(2) + ' ' + (d.unit || '') + '</span>' +
-        '</div>';
+      // 5小时窗口
+      if (data.primary) {
+        html += renderWindow('5小时', data.primary);
+      }
+
+      // 周窗口
+      if (data.secondary) {
+        html += renderWindow('周', data.secondary);
       }
 
       html += '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新 (' + getRemainingStr() + ')</button>' +
-        '<button class="settings-btn" onclick="toggleCookie()">Cookie设置</button></div>' +
-        buildCookieSection();
+        '<button class="settings-btn" onclick="toggleToken()">token设置</button></div>' +
+        buildTokenSection();
 
       root.innerHTML = html;
 
       // 高度动态计算
-      if (window.tooltipAPI && window.tooltipAPI.resize) {
-        var h = 80 + items.length * 90;
-        if (showCookie) h += 120;
-        window.tooltipAPI.resize(h);
+      if (window.tooltipAPI && window.tooltipAPI.resizeChatGPT) {
+        var h = 100;
+        if (data.primary) h += 50;
+        if (data.secondary) h += 50;
+        if (showToken) h += 140;
+        window.tooltipAPI.resizeChatGPT(h);
       }
       startCountdown();
     }
 
-    function buildCookieSection() {
-      if (!showCookie) return '';
-      setTimeout(bindCookie, 50);
-      var escaped = cookieValue.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      return '<div class="cookie-section">' +
-        '<textarea class="cookie-input" id="cookieInput" placeholder="粘贴 Cookie 值...">' + escaped + '</textarea>' +
-        '<div class="cookie-actions">' +
-          '<button class="cookie-save" onclick="saveCookie()">保存</button>' +
+    function buildTokenSection() {
+      if (!showToken) return '';
+      setTimeout(bindToken, 50);
+      var escaped = tokenValue.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return '<div class="token-section">' +
+        '<div style="font-size:10px;opacity:0.5;margin-bottom:4px">Access Token（自动从 ~/.codex/auth.json 读取）</div>' +
+        '<textarea class="token-input" id="tokenInput" placeholder="留空则自动从 ~/.codex/auth.json 读取...">' + escaped + '</textarea>' +
+        '<div class="token-actions">' +
+          '<span class="token-toast" id="tokenToast">已保存</span>' +
+          '<button class="token-save" onclick="saveToken()">保存</button>' +
         '</div>' +
       '</div>';
     }
 
-    function bindCookie() {
-      var ta = document.getElementById('cookieInput');
+    function bindToken() {
+      var ta = document.getElementById('tokenInput');
       if (!ta || ta._bound) return;
       ta._bound = true;
       ta.setSelectionRange(ta.value.length, ta.value.length);
-      ta.addEventListener('input', function() { cookieValue = ta.value; });
+      ta.addEventListener('input', function() { tokenValue = ta.value; });
       ta.addEventListener('keydown', function(e) {
         if (e.metaKey || e.ctrlKey) {
           if (e.key === 'v') {
@@ -254,7 +280,7 @@
                 var s = ta.selectionStart, en = ta.selectionEnd;
                 ta.value = ta.value.substring(0, s) + text + ta.value.substring(en);
                 ta.selectionStart = ta.selectionEnd = s + text.length;
-                cookieValue = ta.value;
+                tokenValue = ta.value;
               });
             }
           } else if (e.key === 'a') {
@@ -265,20 +291,25 @@
       });
     }
 
-    function toggleCookie() {
-      showCookie = !showCookie;
-      renderBalance(window.__balanceData);
+    function toggleToken() {
+      showToken = !showToken;
+      renderUsage(window.__chatgptData);
     }
 
-    function saveCookie() {
-      var input = document.getElementById('cookieInput');
-      var val = input ? input.value.trim() : cookieValue.trim();
+    function saveToken() {
+      var input = document.getElementById('tokenInput');
+      var val = input ? input.value.trim() : tokenValue.trim();
       if (!val) return;
-      cookieValue = val;
-      if (window.tooltipAPI && window.tooltipAPI.updateCookie) {
-        window.tooltipAPI.updateCookie(val).then(function(res) {
+      tokenValue = val;
+      if (window.tooltipAPI && window.tooltipAPI.updateToken) {
+        window.tooltipAPI.updateToken(val).then(function(res) {
           if (res && res.ok) {
-            showCookie = false;
+            var toast = document.getElementById('tokenToast');
+            if (toast) {
+              toast.classList.add('show');
+              setTimeout(function() { toast.classList.remove('show'); }, 2000);
+            }
+            showToken = false;
             doRefresh();
           }
         });
@@ -288,11 +319,11 @@
     function doRefresh() {
       var btn = document.querySelector('.refresh-btn');
       if (btn) { btn.textContent = '刷新中...'; btn.disabled = true; }
-      if (window.tooltipAPI && window.tooltipAPI.refreshBalance) {
-        window.tooltipAPI.refreshBalance().then(function(data) {
+      if (window.tooltipAPI && window.tooltipAPI.refreshChatGPT) {
+        window.tooltipAPI.refreshChatGPT().then(function(data) {
           lastRefreshTime = Date.now();
-          window.__balanceData = data;
-          renderBalance(data);
+          window.__chatgptData = data;
+          renderUsage(data);
         }).catch(function() {
           if (btn) { btn.textContent = '刷新 (' + getRemainingStr() + ')'; btn.disabled = false; }
         });
@@ -300,8 +331,8 @@
     }
 
     // 初始数据由 main process 通过 executeJavaScript 注入
-    if (window.__balanceData) {
-      renderBalance(window.__balanceData);
+    if (window.__chatgptData) {
+      renderUsage(window.__chatgptData);
     }
   </script>
 </body>

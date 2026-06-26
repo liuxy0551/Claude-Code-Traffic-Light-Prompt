@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 type Light = "red" | "yellow" | "green";
 type Theme = "dark" | "light";
 type Style = "triple" | "single";
+type UsageMode = "mimo" | "chatgpt" | "none";
 
 interface BalanceItem {
   isValid: boolean;
@@ -25,6 +26,20 @@ interface BalanceData {
   items?: BalanceItem[];
 }
 
+interface ChatGPTWindowData {
+  usedPercent: number;
+  windowSeconds: number;
+  resetAfterSeconds: number;
+  resetAt: number;
+}
+
+interface ChatGPTUsageData {
+  isValid?: boolean;
+  error?: string;
+  primary?: ChatGPTWindowData | null;
+  secondary?: ChatGPTWindowData | null;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -45,6 +60,16 @@ declare global {
       openBalanceTooltip: (data: BalanceData) => void;
       onBalanceUpdate: (cb: (data: BalanceData) => void) => () => void;
       onBalanceVisibleChange: (cb: (visible: boolean) => void) => () => void;
+      // ChatGPT
+      fetchChatGPTUsage: () => Promise<ChatGPTUsageData>;
+      openChatGPTTooltip: (data: ChatGPTUsageData) => void;
+      onChatGPTUpdate: (cb: (data: ChatGPTUsageData) => void) => () => void;
+      updateChatGPTToken: (token: string) => Promise<{ ok: boolean; error?: string }>;
+      onMuteChange: (cb: (muted: boolean) => void) => () => void;
+      onOpenChatGPTTooltipFromTray: (cb: (data: ChatGPTUsageData) => void) => () => void;
+      onOpenBalanceTooltipFromTray: (cb: (data: BalanceData) => void) => () => void;
+      getUsageMode: () => Promise<UsageMode>;
+      onUsageModeChange: (cb: (mode: UsageMode) => void) => () => void;
     };
   }
 }
@@ -63,9 +88,10 @@ export default function App() {
   const [style, setStyleState]        = useState<Style>("triple");
   const [greenSteady, setGreenSteady] = useState(false);
   const [muted, setMuted]             = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [balance, setBalance]         = useState<BalanceData | null>(null);
   const [balanceVisible, setBalanceVisible] = useState(true);
+  const [chatgptUsage, setChatgptUsage] = useState<ChatGPTUsageData | null>(null);
+  const [usageMode, setUsageMode]     = useState<UsageMode>("mimo");
   const greenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioCtxRef   = useRef<AudioContext | null>(null);
 
@@ -101,6 +127,37 @@ export default function App() {
     const off1 = window.electronAPI.onBalanceUpdate((d) => setBalance(d));
     const off2 = window.electronAPI.onBalanceVisibleChange((v) => setBalanceVisible(v));
     return () => { off1(); off2(); };
+  }, []);
+
+  // 用量显示模式：启动时获取，监听变化
+  useEffect(() => {
+    if (!window.electronAPI?.getUsageMode) return;
+    window.electronAPI.getUsageMode().then((m) => setUsageMode(m));
+    return window.electronAPI.onUsageModeChange((m) => setUsageMode(m));
+  }, []);
+
+  // ChatGPT 用量查询：启动时获取，监听自动刷新
+  useEffect(() => {
+    if (!window.electronAPI?.fetchChatGPTUsage) return;
+    window.electronAPI.fetchChatGPTUsage().then((d) => setChatgptUsage(d));
+    const off1 = window.electronAPI.onChatGPTUpdate((d) => setChatgptUsage(d));
+    // 从托盘菜单打开 ChatGPT tooltip
+    const off2 = window.electronAPI.onOpenChatGPTTooltipFromTray((d) => {
+      setChatgptUsage(d);
+      window.electronAPI?.openChatGPTTooltip(d);
+    });
+    // 从托盘菜单打开 MIMO tooltip
+    const off3 = window.electronAPI.onOpenBalanceTooltipFromTray((d) => {
+      setBalance(d);
+      window.electronAPI?.openBalanceTooltip(d);
+    });
+    return () => { off1(); off2(); off3(); };
+  }, []);
+
+  // 监听托盘菜单的静音切换
+  useEffect(() => {
+    if (!window.electronAPI?.onMuteChange) return;
+    return window.electronAPI.onMuteChange((m) => setMuted(m));
   }, []);
 
   // 用 Web Audio API 合成轻提示音，无需音频文件
@@ -187,28 +244,8 @@ export default function App() {
   useEffect(() => {
     if (!window.electronAPI) return;
     const base = style === "single" ? 110 : 220;
-    const withSettings = style === "single" ? 200 : 310;
-    window.electronAPI.setWindowHeight(showSettings ? withSettings : base);
-  }, [showSettings, style]);
-
-  const handleBalanceClick = () => {
-    if (window.electronAPI) window.electronAPI.openBalanceTooltip(balance || {});
-  };
-
-  const balancePercent = (() => {
-    if (!balance) return null;
-    if (balance.items?.length) {
-      const first = balance.items[0];
-      return first.isValid && first.extra ? Math.round(parseFloat(first.extra)) : null;
-    }
-    return balance.isValid && balance.extra ? Math.round(parseFloat(balance.extra)) : null;
-  })();
-
-  const toggleMute = () => {
-    const next = !muted;
-    setMuted(next);
-    window.electronAPI?.setMute(next);
-  };
+    window.electronAPI.setWindowHeight(base);
+  }, [style]);
 
   const housing = dark
     ? {
@@ -406,124 +443,120 @@ export default function App() {
         </div>
         )}
 
-        {/* 余量徽章：左下角 */}
-        {balanceVisible && <button
-          className="no-drag"
-          onClick={handleBalanceClick}
-          style={{
-            position: "absolute", bottom: 4, left: 6,
-            minWidth: 28, height: 20, borderRadius: 10, border: "none",
-            padding: "0 4px",
-            background: balancePercent === null
-              ? "rgba(255,255,255,0.08)"
-              : balancePercent < 75
-                ? "rgba(48,209,88,0.15)"
-                : balancePercent < 90
-                  ? "rgba(255,159,10,0.15)"
-                  : "rgba(255,59,48,0.15)",
-            color: balancePercent === null
-              ? dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"
-              : balancePercent < 75
-                ? "#30D158"
-                : balancePercent < 90
-                  ? "#FF9F0A"
-                  : "#FF3B30",
-            fontSize: 10, fontWeight: 600, cursor: "pointer", display: "flex",
-            alignItems: "center", justifyContent: "center",
-            WebkitAppRegion: "no-drag",
-            fontVariantNumeric: "tabular-nums",
-          } as React.CSSProperties}
-          title="点击查看余量"
-        >
-          {balancePercent !== null ? balancePercent + "%" : "0%"}
-        </button>}
+        {/* mimo 用量：左下角 */}
+        {usageMode === "mimo" && balanceVisible && (() => {
+          const balancePercent = (() => {
+            if (!balance) return null;
+            if (balance.items?.length) {
+              const first = balance.items[0];
+              return first.isValid && first.extra ? Math.round(parseFloat(first.extra)) : null;
+            }
+            return balance.isValid && balance.extra ? Math.round(parseFloat(balance.extra)) : null;
+          })();
+          return (
+            <button
+              className="no-drag"
+              onClick={() => window.electronAPI?.openBalanceTooltip(balance || {})}
+              style={{
+                position: "absolute", bottom: 4, left: 6,
+                minWidth: 28, height: 20, borderRadius: 10, border: "none",
+                padding: "0 4px",
+                background: balancePercent === null
+                  ? "rgba(255,255,255,0.08)"
+                  : balancePercent < 75
+                    ? "rgba(48,209,88,0.15)"
+                    : balancePercent < 90
+                      ? "rgba(255,159,10,0.15)"
+                      : "rgba(255,59,48,0.15)",
+                color: balancePercent === null
+                  ? dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"
+                  : balancePercent < 75
+                    ? "#30D158"
+                    : balancePercent < 90
+                      ? "#FF9F0A"
+                      : "#FF3B30",
+                fontSize: 10, fontWeight: 600, cursor: "pointer", display: "flex",
+                alignItems: "center", justifyContent: "center",
+                WebkitAppRegion: "no-drag",
+                fontVariantNumeric: "tabular-nums",
+              } as React.CSSProperties}
+              title="点击查看余量"
+            >
+              {balancePercent !== null ? balancePercent + "%" : "0%"}
+            </button>
+          );
+        })()}
 
-        {/* 设置按钮：悬停显示，右下角 */}
-        <button
-          className="no-drag"
-          onClick={() => setShowSettings(next => !next)}
-          style={{
-            position: "absolute", bottom: 6, right: 6,
-            width: 20, height: 20, borderRadius: "50%", border: "none",
-            background: dark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
-            color: dark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.35)",
-            fontSize: 11, cursor: "pointer", display: "flex",
-            alignItems: "center", justifyContent: "center",
-            WebkitAppRegion: "no-drag",
-          } as React.CSSProperties}
-          title="设置"
-        >⚙</button>
+        {/* codex 5h 用量：左下角 */}
+        {usageMode === "chatgpt" && (() => {
+          const pct = chatgptUsage?.isValid && chatgptUsage.primary ? chatgptUsage.primary.usedPercent : 0;
+          return (
+            <button
+              className="no-drag"
+              onClick={() => window.electronAPI?.openChatGPTTooltip(chatgptUsage || { isValid: false, error: '未查询' })}
+              style={{
+                position: "absolute", bottom: 4, left: 6,
+                minWidth: 28, height: 20, borderRadius: 10, border: "none",
+                padding: "0 4px",
+                background: pct < 75
+                  ? "rgba(48,209,88,0.15)"
+                  : pct < 90
+                    ? "rgba(255,159,10,0.15)"
+                    : "rgba(255,59,48,0.15)",
+                color: !chatgptUsage?.isValid
+                  ? dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"
+                  : pct < 75
+                    ? "#30D158"
+                    : pct < 90
+                      ? "#FF9F0A"
+                      : "#FF3B30",
+                fontSize: 10, fontWeight: 600, cursor: "pointer", display: "flex",
+                alignItems: "center", justifyContent: "center",
+                WebkitAppRegion: "no-drag",
+                fontVariantNumeric: "tabular-nums",
+              } as React.CSSProperties}
+              title="5小时用量"
+            >
+              {pct}%
+            </button>
+          );
+        })()}
+
+        {/* codex 周用量：右下角 */}
+        {usageMode === "chatgpt" && (() => {
+          const pct = chatgptUsage?.isValid && chatgptUsage.secondary ? chatgptUsage.secondary.usedPercent : 0;
+          return (
+            <button
+              className="no-drag"
+              onClick={() => window.electronAPI?.openChatGPTTooltip(chatgptUsage || { isValid: false, error: '未查询' })}
+              style={{
+                position: "absolute", bottom: 4, right: 6,
+                minWidth: 28, height: 20, borderRadius: 10, border: "none",
+                padding: "0 4px",
+                background: pct < 75
+                  ? "rgba(48,209,88,0.15)"
+                  : pct < 90
+                    ? "rgba(255,159,10,0.15)"
+                    : "rgba(255,59,48,0.15)",
+                color: !chatgptUsage?.isValid
+                  ? dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"
+                  : pct < 75
+                    ? "#30D158"
+                    : pct < 90
+                      ? "#FF9F0A"
+                      : "#FF3B30",
+                fontSize: 10, fontWeight: 600, cursor: "pointer", display: "flex",
+                alignItems: "center", justifyContent: "center",
+                WebkitAppRegion: "no-drag",
+                fontVariantNumeric: "tabular-nums",
+              } as React.CSSProperties}
+              title="周用量"
+            >
+              {pct}%
+            </button>
+          );
+        })()}
       </div>
-
-      {/* 设置面板 */}
-      {showSettings && (
-        <div
-          className="no-drag"
-          style={{
-            marginTop: 8, borderRadius: 14, padding: "10px 14px",
-            background: dark ? "rgba(44,44,46,0.96)" : "rgba(255,255,255,0.96)",
-            border: dark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.08)",
-            width: 80, display: "flex", flexDirection: "column", gap: 8,
-            WebkitAppRegion: "no-drag",
-          } as React.CSSProperties}
-        >
-          {/* 静音开关 */}
-          <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
-            <span style={{ fontSize: 11, color: dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)" }}>
-              {muted ? "🔇" : "🔔"}
-            </span>
-            <div
-              onClick={toggleMute}
-              style={{
-                width: 32, height: 18, borderRadius: 9,
-                background: muted
-                  ? (dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.12)")
-                  : "#30D158",
-                position: "relative", transition: "background 0.2s",
-                cursor: "pointer",
-              }}
-            >
-              <div style={{
-                position: "absolute", top: 2,
-                left: muted ? 2 : 14,
-                width: 14, height: 14, borderRadius: "50%",
-                background: "white",
-                transition: "left 0.2s",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-              }} />
-            </div>
-          </label>
-
-          {/* 主题切换 */}
-          <label style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer" }}>
-            <span style={{ fontSize: 11, color: dark ? "rgba(255,255,255,0.7)" : "rgba(0,0,0,0.6)" }}>
-              {dark ? "🌙" : "☀️"}
-            </span>
-            <div
-              onClick={() => {
-                const next = dark ? "light" : "dark";
-                setThemeState(next);
-                window.electronAPI?.setTheme(next);
-              }}
-              style={{
-                width: 32, height: 18, borderRadius: 9,
-                background: dark ? "#30D158" : "rgba(0,0,0,0.12)",
-                position: "relative", transition: "background 0.2s",
-                cursor: "pointer",
-              }}
-            >
-              <div style={{
-                position: "absolute", top: 2,
-                left: dark ? 14 : 2,
-                width: 14, height: 14, borderRadius: "50%",
-                background: "white",
-                transition: "left 0.2s",
-                boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
-              }} />
-            </div>
-          </label>
-        </div>
-      )}
     </div>
   );
 }

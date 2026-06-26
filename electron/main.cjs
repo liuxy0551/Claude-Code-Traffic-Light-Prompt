@@ -11,6 +11,8 @@ const THEME_FILE   = path.join(TMP, 'cc_traffic_light_theme')
 const MUTE_FILE    = path.join(TMP, 'cc_traffic_light_mute')
 const STYLE_FILE   = path.join(TMP, 'cc_traffic_light_style')
 const COOKIE_FILE  = path.join(TMP, 'cc_traffic_light_cookie')
+const CHATGPT_TOKEN_FILE = path.join(TMP, 'cc_traffic_light_chatgpt_token')
+const USAGE_MODE_FILE = path.join(TMP, 'cc_traffic_light_usage_mode') // 'mimo' | 'chatgpt' | 'none'
 // 统计文件存到 ~/.claude/，跨平台持久化，不放 /tmp 避免重启丢失
 const STATS_FILE   = path.join(os.homedir(), '.claude', 'cc_traffic_light_stats.json')
 const distPath     = path.join(__dirname, '../dist/index.html')
@@ -120,6 +122,12 @@ function readSavedCookie() {
   } catch { return '' }
 }
 
+function readUsageMode() {
+  try {
+    return fs.existsSync(USAGE_MODE_FILE) ? fs.readFileSync(USAGE_MODE_FILE, 'utf-8').trim() : 'mimo'
+  } catch { return 'mimo' }
+}
+
 let balanceConfig = { ...DEFAULT_BALANCE_CONFIG }
 // 启动时回显已保存的 Cookie
 ;(function() {
@@ -169,6 +177,160 @@ function fetchBalanceData() {
       req.on('error', (e) => resolve({ isValid: false, error: '请求失败: ' + e.message }))
       req.on('timeout', () => { req.destroy(); resolve({ isValid: false, error: '请求超时' }) })
       req.end()
+    } catch (e) {
+      resolve({ isValid: false, error: e.message })
+    }
+  })
+}
+
+// ─── ChatGPT 用量查询 ─────────────────────────────────────────────
+function readSavedChatGPTToken() {
+  try {
+    // 优先从 Codex auth.json 读取
+    const codexAuthPath = path.join(os.homedir(), '.codex', 'auth.json')
+    if (fs.existsSync(codexAuthPath)) {
+      const authData = JSON.parse(fs.readFileSync(codexAuthPath, 'utf-8'))
+      if (authData?.tokens?.access_token) {
+        return authData.tokens.access_token
+      }
+    }
+    // 回退到本地保存的 token
+    return fs.existsSync(CHATGPT_TOKEN_FILE) ? fs.readFileSync(CHATGPT_TOKEN_FILE, 'utf-8').trim() : ''
+  } catch { return '' }
+}
+
+function refreshChatGPTToken() {
+  return new Promise((resolve) => {
+    try {
+      const codexAuthPath = path.join(os.homedir(), '.codex', 'auth.json')
+      if (!fs.existsSync(codexAuthPath)) {
+        return resolve({ ok: false, error: 'Codex auth.json 不存在' })
+      }
+      const authData = JSON.parse(fs.readFileSync(codexAuthPath, 'utf-8'))
+      const refreshToken = authData?.tokens?.refresh_token
+      if (!refreshToken) {
+        return resolve({ ok: false, error: '没有 refresh_token' })
+      }
+
+      const { net } = require('electron')
+      const postData = JSON.stringify({
+        client_id: 'app_EMoamEEZ73f0CkXaXp7hrann',
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken
+      })
+
+      const request = net.request({
+        method: 'POST',
+        url: 'https://auth.openai.com/oauth/token',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      let responseData = ''
+      request.on('response', (response) => {
+        response.on('data', (chunk) => { responseData += chunk.toString() })
+        response.on('end', () => {
+          try {
+            const json = JSON.parse(responseData)
+            if (json.access_token) {
+              // 更新 auth.json
+              authData.tokens.access_token = json.access_token
+              if (json.refresh_token) {
+                authData.tokens.refresh_token = json.refresh_token
+              }
+              authData.last_refresh = new Date().toISOString()
+              fs.writeFileSync(codexAuthPath, JSON.stringify(authData, null, 2))
+              console.log('[codex] token 刷新成功')
+              resolve({ ok: true, token: json.access_token })
+            } else {
+              console.log('[codex] token 刷新失败:', json)
+              resolve({ ok: false, error: json.error?.message || '刷新失败' })
+            }
+          } catch (e) {
+            resolve({ ok: false, error: e.message })
+          }
+        })
+      })
+
+      request.on('error', (e) => resolve({ ok: false, error: e.message }))
+      setTimeout(() => { request.abort(); resolve({ ok: false, error: '超时' }) }, 15000)
+      request.write(postData)
+      request.end()
+    } catch (e) {
+      resolve({ ok: false, error: e.message })
+    }
+  })
+}
+
+function fetchChatGPTUsage(retryCount = 0) {
+  return new Promise((resolve) => {
+    try {
+      const token = readSavedChatGPTToken()
+      if (!token) {
+        return resolve({ isValid: false, error: '未设置 token' })
+      }
+
+      const { net } = require('electron')
+      const request = net.request({
+        method: 'GET',
+        url: 'https://chatgpt.com/backend-api/wham/usage',
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'User-Agent': 'codex-cli',
+          'Accept': 'application/json',
+        },
+      })
+
+      let responseData = ''
+      request.on('response', (response) => {
+        response.on('data', (chunk) => {
+          responseData += chunk.toString()
+        })
+        response.on('end', () => {
+          // 如果 401 且未重试过，尝试刷新 token
+          if (response.statusCode === 401 && retryCount === 0) {
+            refreshChatGPTToken().then((result) => {
+              if (result.ok) {
+                fetchChatGPTUsage(1).then(resolve)
+              } else {
+                resolve({ isValid: false, error: 'token 已失效，请重新登录 codex' })
+              }
+            })
+            return
+          }
+
+          try {
+            const json = JSON.parse(responseData)
+            const primary = json?.rate_limit?.primary_window
+            const secondary = json?.rate_limit?.secondary_window
+            resolve({
+              isValid: true,
+              primary: primary ? {
+                usedPercent: primary.used_percent,
+                windowSeconds: primary.limit_window_seconds,
+                resetAfterSeconds: primary.reset_after_seconds,
+                resetAt: primary.reset_at,
+              } : null,
+              secondary: secondary ? {
+                usedPercent: secondary.used_percent,
+                windowSeconds: secondary.limit_window_seconds,
+                resetAfterSeconds: secondary.reset_after_seconds,
+                resetAt: secondary.reset_at,
+              } : null,
+            })
+          } catch (e) {
+            resolve({ isValid: false, error: '解析失败: ' + e.message })
+          }
+        })
+      })
+
+      request.on('error', (e) => resolve({ isValid: false, error: '请求失败: ' + e.message }))
+      setTimeout(() => {
+        request.abort()
+        resolve({ isValid: false, error: '请求超时' })
+      }, 15000)
+      request.end()
     } catch (e) {
       resolve({ isValid: false, error: e.message })
     }
@@ -381,54 +543,156 @@ function buildAppMenu(currentTheme) {
   ])
 }
 
+function closeAllTooltips() {
+  if (balanceTooltipWin && !balanceTooltipWin.isDestroyed()) {
+    balanceTooltipWin.close()
+    balanceTooltipWin = null
+  }
+  if (chatgptTooltipWin && !chatgptTooltipWin.isDestroyed()) {
+    chatgptTooltipWin.close()
+    chatgptTooltipWin = null
+  }
+}
+
 function buildTrayMenu(currentTheme, currentStyle) {
   const isSingle = currentStyle === 'single'
+  const isMuted = readMute()
+  const usageMode = readUsageMode()
   return Menu.buildFromTemplate([
-    { label: '切换到红灯', click: () => { try { fs.writeFileSync(STATE_FILE, 'red') } catch {} } },
-    { label: '切换到黄灯', click: () => { try { fs.writeFileSync(STATE_FILE, 'yellow') } catch {} } },
-    { label: '切换到绿灯', click: () => { try { fs.writeFileSync(STATE_FILE, 'green') } catch {} } },
-    { type: 'separator' },
+    // 用量查询子菜单
     {
-      label: isSingle ? '切换到三灯样式' : '切换到单灯样式',
-      click: () => {
-        const next = isSingle ? 'triple' : 'single'
-        try { fs.writeFileSync(STYLE_FILE, next) } catch {}
-        if (mainWin) mainWin.webContents.send('style-change', next)
-        tray.setContextMenu(buildTrayMenu(currentTheme, next))
-      }
+      label: '📊 用量查询',
+      submenu: [
+        {
+          label: '显示 mimo 用量',
+          type: 'radio',
+          checked: usageMode === 'mimo',
+          click: () => {
+            try { fs.writeFileSync(USAGE_MODE_FILE, 'mimo') } catch {}
+            closeAllTooltips()
+            if (mainWin && !mainWin.isDestroyed()) {
+              mainWin.webContents.send('usage-mode-change', 'mimo')
+            }
+            tray.setContextMenu(buildTrayMenu(currentTheme, currentStyle))
+          }
+        },
+        {
+          label: '显示 codex 用量',
+          type: 'radio',
+          checked: usageMode === 'chatgpt',
+          click: () => {
+            try { fs.writeFileSync(USAGE_MODE_FILE, 'chatgpt') } catch {}
+            closeAllTooltips()
+            if (mainWin && !mainWin.isDestroyed()) {
+              mainWin.webContents.send('usage-mode-change', 'chatgpt')
+            }
+            tray.setContextMenu(buildTrayMenu(currentTheme, currentStyle))
+          }
+        },
+        {
+          label: '隐藏用量',
+          type: 'radio',
+          checked: usageMode === 'none',
+          click: () => {
+            try { fs.writeFileSync(USAGE_MODE_FILE, 'none') } catch {}
+            closeAllTooltips()
+            if (mainWin && !mainWin.isDestroyed()) {
+              mainWin.webContents.send('usage-mode-change', 'none')
+            }
+            tray.setContextMenu(buildTrayMenu(currentTheme, currentStyle))
+          }
+        },
+      ]
     },
     { type: 'separator' },
+
+    // 灯色切换子菜单
     {
-      label: '查看配置路径',
-      click: () => {
-        const { dialog, shell } = require('electron')
-        const p = lastConfiguredSettingsPath || getClaudeSettingsPath()
-        dialog.showMessageBox({
-          type: 'info',
-          title: 'CC 红绿灯 — 配置路径',
-          message: 'Hooks 已写入以下文件：',
-          detail: p + '\n\n如果红绿灯不响应，请确认 Claude Code 读取的是这个文件。\n点击"打开文件"可直接查看内容。',
-          buttons: ['打开文件', '关闭'],
-          defaultId: 1,
-        }).then(({ response }) => { if (response === 0) shell.openPath(p) })
-      }
+      label: '🚦 灯色切换',
+      submenu: [
+        { label: '红灯', click: () => { try { fs.writeFileSync(STATE_FILE, 'red') } catch {} } },
+        { label: '黄灯', click: () => { try { fs.writeFileSync(STATE_FILE, 'yellow') } catch {} } },
+        { label: '绿灯', click: () => { try { fs.writeFileSync(STATE_FILE, 'green') } catch {} } },
+      ]
     },
+    { type: 'separator' },
+
+    // 样式切换子菜单
     {
-      label: '重新写入配置',
-      click: () => {
-        setupClaudeHooks()
-        const { dialog } = require('electron')
-        dialog.showMessageBox({
-          type: 'info',
-          title: 'CC 红绿灯',
-          message: '配置已重新写入',
-          detail: lastConfiguredSettingsPath || getClaudeSettingsPath(),
-          buttons: ['确定'],
-        })
-      }
+      label: '🎨 样式切换',
+      submenu: [
+        {
+          label: '单灯',
+          type: 'radio',
+          checked: isSingle,
+          click: () => {
+            try { fs.writeFileSync(STYLE_FILE, 'single') } catch {}
+            if (mainWin) mainWin.webContents.send('style-change', 'single')
+            tray.setContextMenu(buildTrayMenu(currentTheme, 'single'))
+          }
+        },
+        {
+          label: '三灯',
+          type: 'radio',
+          checked: !isSingle,
+          click: () => {
+            try { fs.writeFileSync(STYLE_FILE, 'triple') } catch {}
+            if (mainWin) mainWin.webContents.send('style-change', 'triple')
+            tray.setContextMenu(buildTrayMenu(currentTheme, 'triple'))
+          }
+        },
+      ]
     },
+    { type: 'separator' },
+
+    // 设置子菜单
     {
-      label: '复制手动配置',
+      label: '⚙️ 设置',
+      submenu: [
+        {
+          label: isMuted ? '🔇 取消静音' : '🔔 静音',
+          click: () => {
+            const next = !isMuted
+            try { fs.writeFileSync(MUTE_FILE, next ? 'true' : 'false') } catch {}
+            if (mainWin && !mainWin.isDestroyed()) {
+              mainWin.webContents.send('mute-change', next)
+            }
+            tray.setContextMenu(buildTrayMenu(currentTheme, currentStyle))
+          }
+        },
+        {
+          label: currentTheme === 'dark' ? '☀️ 浅色模式' : '🌙 深色模式',
+          click: () => {
+            const next = currentTheme === 'dark' ? 'light' : 'dark'
+            try { fs.writeFileSync(THEME_FILE, next) } catch {}
+            if (mainWin) mainWin.webContents.send('theme-change', next)
+            tray.setContextMenu(buildTrayMenu(next, currentStyle))
+            Menu.setApplicationMenu(buildAppMenu(next))
+          }
+        },
+        { type: 'separator' },
+        {
+          label: '查看配置路径',
+          click: () => {
+            const { dialog, shell } = require('electron')
+            const p = lastConfiguredSettingsPath || getClaudeSettingsPath()
+            dialog.showMessageBox({
+              type: 'info',
+              title: 'CC 红绿灯 — 配置路径',
+              message: 'Hooks 已写入以下文件：',
+              detail: p + '\n\n如果红绿灯不响应，请确认 Claude Code 读取的是这个文件。\n点击"打开文件"可直接查看内容。',
+              buttons: ['打开文件', '关闭'],
+              defaultId: 1,
+            }).then(({ response }) => { if (response === 0) shell.openPath(p) })
+          }
+        },
+      ]
+    },
+    { type: 'separator' },
+
+    // 配置操作
+    {
+      label: '📋 复制手动配置',
       click: () => {
         const { clipboard, dialog } = require('electron')
         const isWin = process.platform === 'win32'
@@ -451,34 +715,25 @@ function buildTrayMenu(currentTheme, currentStyle) {
         })
       }
     },
-    { type: 'separator' },
     {
-      label: isBalanceVisible ? '隐藏余量' : '显示余量',
+      label: '🔄 重新写入配置',
       click: () => {
-        isBalanceVisible = !isBalanceVisible
-        if (!isBalanceVisible && balanceTooltipWin && !balanceTooltipWin.isDestroyed()) {
-          balanceTooltipWin.close()
-        }
-        if (mainWin && !mainWin.isDestroyed()) {
-          mainWin.webContents.send('balance-visible-change', isBalanceVisible)
-        }
-        tray.setContextMenu(buildTrayMenu(currentTheme, currentStyle))
+        setupClaudeHooks()
+        const { dialog } = require('electron')
+        dialog.showMessageBox({
+          type: 'info',
+          title: 'CC 红绿灯',
+          message: '配置已重新写入',
+          detail: lastConfiguredSettingsPath || getClaudeSettingsPath(),
+          buttons: ['确定'],
+        })
       }
     },
     { type: 'separator' },
+
+    // 其他功能
     {
-      label: currentTheme === 'dark' ? '切换浅色模式' : '切换深色模式',
-      click: () => {
-        const next = currentTheme === 'dark' ? 'light' : 'dark'
-        try { fs.writeFileSync(THEME_FILE, next) } catch {}
-        if (mainWin) mainWin.webContents.send('theme-change', next)
-        tray.setContextMenu(buildTrayMenu(next, currentStyle))
-        Menu.setApplicationMenu(buildAppMenu(next))
-      }
-    },
-    { type: 'separator' },
-    {
-      label: '本周周报',
+      label: '📈 本周周报',
       click: () => {
         const { dialog } = require('electron')
         const stats = readStats()
@@ -509,11 +764,11 @@ function buildTrayMenu(currentTheme, currentStyle) {
       }
     },
     {
-      label: '检查更新',
+      label: '🔄 检查更新',
       click: () => checkForUpdates(true)
     },
     {
-      label: '关于我',
+      label: 'ℹ️ 关于我',
       click: () => {
         const { dialog } = require('electron')
         dialog.showMessageBox({
@@ -526,7 +781,7 @@ function buildTrayMenu(currentTheme, currentStyle) {
       }
     },
     { type: 'separator' },
-    { label: '退出', click: () => app.quit() }
+    { label: '❌ 退出', click: () => app.quit() }
   ])
 }
 
@@ -637,6 +892,97 @@ ipcMain.handle('update-balance-cookie', async (_, cookie) => {
     return { ok: true }
   } catch (e) {
     return { ok: false, error: e.message }
+  }
+})
+
+// ─── 用量显示模式 IPC ──────────────────────────────────────────────
+ipcMain.handle('get-usage-mode', () => readUsageMode())
+
+// ─── ChatGPT IPC Handlers ─────────────────────────────────────────
+ipcMain.handle('fetch-chatgpt-usage', async () => {
+  return await fetchChatGPTUsage()
+})
+
+ipcMain.handle('update-chatgpt-token', async (_, token) => {
+  try {
+    try { fs.writeFileSync(CHATGPT_TOKEN_FILE, token) } catch {}
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e.message }
+  }
+})
+
+let chatgptTooltipWin = null
+
+ipcMain.handle('open-chatgpt-tooltip', async (_, data) => {
+  // Toggle: 如果已打开则关闭
+  if (chatgptTooltipWin && !chatgptTooltipWin.isDestroyed()) {
+    chatgptTooltipWin.close()
+    chatgptTooltipWin = null
+    return
+  }
+
+  const { BrowserWindow: BW } = require('electron')
+  const mainBounds = mainWin.getBounds()
+  const { width: sw } = screen.getPrimaryDisplay().workAreaSize
+
+  let x = mainBounds.x + mainBounds.width + 4
+  let y = mainBounds.y
+  if (x + 280 > sw) x = mainBounds.x - 284
+
+  chatgptTooltipWin = new BW({
+    width: 280, height: 200,
+    x, y,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: true,
+    type: 'toolbar',
+    webPreferences: {
+      preload: path.join(__dirname, 'tooltip-preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  const chatgptTooltipPath = isDev
+    ? path.join(__dirname, '../public/chatgpt-tooltip.html')
+    : path.join(__dirname, '../dist/chatgpt-tooltip.html')
+  chatgptTooltipWin.loadFile(chatgptTooltipPath)
+
+  chatgptTooltipWin.webContents.on('did-finish-load', () => {
+    if (!chatgptTooltipWin || chatgptTooltipWin.isDestroyed()) return
+    const encoded = encodeURIComponent(JSON.stringify(data))
+    const encodedToken = encodeURIComponent(readSavedChatGPTToken())
+    chatgptTooltipWin.webContents.executeJavaScript(
+      `window.__chatgptData = JSON.parse(decodeURIComponent("${encoded}"));
+       window.__savedToken = decodeURIComponent("${encodedToken}");
+       if(window.__savedToken) tokenValue = window.__savedToken;
+       renderUsage && renderUsage(window.__chatgptData)`
+    )
+  })
+
+  chatgptTooltipWin.on('blur', () => {
+    if (chatgptTooltipWin && !chatgptTooltipWin.isDestroyed()) {
+      chatgptTooltipWin.close()
+      chatgptTooltipWin = null
+    }
+  })
+})
+
+ipcMain.handle('refresh-chatgpt-tooltip', async () => {
+  const data = await fetchChatGPTUsage()
+  if (mainWin && !mainWin.isDestroyed()) {
+    mainWin.webContents.send('chatgpt-update', data)
+  }
+  return data
+})
+
+ipcMain.on('resize-chatgpt-tooltip', (_, height) => {
+  if (chatgptTooltipWin && !chatgptTooltipWin.isDestroyed()) {
+    chatgptTooltipWin.setSize(280, height)
   }
 })
 
@@ -756,7 +1102,17 @@ function createWindow() {
     }
   }
   const balanceTimer = setInterval(fetchAndNotifyBalance, 300000)
-  mainWin.on('closed', () => { clearInterval(balanceTimer) })
+
+  // 5 分钟自动刷新 ChatGPT 用量
+  const fetchAndNotifyChatGPT = async () => {
+    const data = await fetchChatGPTUsage()
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.webContents.send('chatgpt-update', data)
+    }
+  }
+  const chatgptTimer = setInterval(fetchAndNotifyChatGPT, 300000)
+
+  mainWin.on('closed', () => { clearInterval(balanceTimer); clearInterval(chatgptTimer) })
 }
 
 app.whenReady().then(() => {
