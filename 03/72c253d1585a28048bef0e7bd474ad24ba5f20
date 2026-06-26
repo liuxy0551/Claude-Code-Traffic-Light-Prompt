@@ -1,0 +1,93 @@
+src/app/App.tsx
+  s_a2ee6f6e3cdff6::t_36d15967ef763c 105,119
+  h_0c940a947252a6 149,308,459,474-475,503,511-512,538,546-547
+  s_a2ee6f6e3cdff6::t_d3eee5136bfaf6 476,513,548
+  s_a2ee6f6e3cdff6::t_cad3b638156815 88
+  s_a2ee6f6e3cdff6::t_14e53b88343330 246-260
+  s_a2ee6f6e3cdff6::t_775e26c1e44c52 86
+  s_a2ee6f6e3cdff6::t_8c2eebbb808763 371
+electron/preload.cjs
+  s_a2ee6f6e3cdff6::t_5f4457e3a34850 30
+  h_0c940a947252a6 68
+public/balance-tooltip.html
+  s_a2ee6f6e3cdff6::t_4cca2bd4e2d3cd 144,147-152
+  h_0c940a947252a6 5,177,196
+public/chatgpt-tooltip.html
+  s_a2ee6f6e3cdff6::t_d9009a61e1abca 147,150-155
+  s_4a8e61c821f13c::t_ca41e9f54260c7 266
+  s_4a8e61c821f13c::t_6a8821b859e0d0 316-317,323-330
+  s_a2ee6f6e3cdff6::t_d6fdfffad20ffd 182
+  h_0c940a947252a6 5,210,220-221,229,254,264,267
+  s_a2ee6f6e3cdff6::t_774057c98d5220 217,244
+electron/main.cjs
+  s_a2ee6f6e3cdff6::t_d6bea833b274c0 363,365,464,908
+  s_4a8e61c821f13c::t_a4632523895b74 937
+  s_4a8e61c821f13c::t_49f685e9590736 722-725,732-733
+  s_a2ee6f6e3cdff6::t_e3faf6a2ee3765 1251-1256,1258
+  s_a2ee6f6e3cdff6::t_174723331e4c55 1247,1257
+  s_4a8e61c821f13c::t_a8305981e96bb1 726-731
+  s_a2ee6f6e3cdff6::t_57b8f3b1c91d02 40-44
+  s_4a8e61c821f13c::t_8d913f71654fb5 1061-1066
+  s_a2ee6f6e3cdff6::t_9770a970896b38 656
+  s_a2ee6f6e3cdff6::t_34a90911739d71 843-844,846,848,863
+  s_4a8e61c821f13c::t_a014309d284f21 1068-1076
+  s_a2ee6f6e3cdff6::t_8cbd6be1c77ddf 133,634-640
+  s_a2ee6f6e3cdff6::t_ec5d080fb8f1c1 800,802-831,833-842
+  s_a2ee6f6e3cdff6::t_e87d08c779d6f1 137-139
+  s_a2ee6f6e3cdff6::t_c4271298cbcd07 16
+  s_a2ee6f6e3cdff6::t_74dc6691803dea 658,703-712,715,742,750,752,754-766,773,798-799,801,832,847,849-861
+  s_4a8e61c821f13c::t_5b1f28be436fef 867,870-875
+  s_4a8e61c821f13c::t_15998c784eb446 1125-1126,1130-1131
+  s_4a8e61c821f13c::t_5115e5cd6ea275 282
+  s_a2ee6f6e3cdff6::t_c70aaad355607a 1277-1278
+  s_a2ee6f6e3cdff6::t_43d34f4c8a43b1 448,514,542,552,588,597,599,1339
+  s_4a8e61c821f13c::t_1d40c94e23a5ec 203,210,213-214
+  s_a2ee6f6e3cdff6::t_9a155ee0a21245 455-463,465-513,515-520
+  s_a2ee6f6e3cdff6::t_599b0c2c166eaf 380,382-384
+  s_4a8e61c821f13c::t_c757f8ab5864b2 862,921,926-932
+  s_a2ee6f6e3cdff6::t_c0d7fce18fe137 1279-1282,1296-1312
+  h_0c940a947252a6 131-132,310,663,676
+  s_a2ee6f6e3cdff6::t_df4a7d9c1ac7ee 1248-1250
+  s_4a8e61c821f13c::t_ec2c57f4fb2c63 200-202,204-205
+  s_a2ee6f6e3cdff6::t_fd77887b0d8595 376-379
+  s_a2ee6f6e3cdff6::t_ae18b386ffa43d 381,385,1326
+  s_a2ee6f6e3cdff6::t_c7c327dfdc4542 135-136
+README.md
+  h_0c940a947252a6 11,30-33,36,38,40
+  s_a2ee6f6e3cdff6::t_0bbaab9bd11a73 2,4
+  s_a2ee6f6e3cdff6::t_4ef24d6c8e2776 6,8-10,12,14,16-17,19-26,34
+electron/tooltip-preload.cjs
+  h_0c940a947252a6 3,5,17
+package.json
+  h_0c940a947252a6 2,4,18,45
+  s_a2ee6f6e3cdff6::t_4836ab98a4a85e 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.9",
+  "base_commit_sha": "0372c253d1585a28048bef0e7bd474ad24ba5f20",
+  "prompts": {},
+  "humans": {
+    "h_0c940a947252a6": {
+      "author": "liuyi <liuyi@dtstack.com>"
+    }
+  },
+  "sessions": {
+    "s_4a8e61c821f13c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2588755f-f1ec-4e76-a2b6-d348824f726c",
+        "model": "mimo-v2.5-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    },
+    "s_a2ee6f6e3cdff6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ecb7e714-70e9-4bc5-b46b-dbd13e052b3d",
+        "model": "mimo-v2.5-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
