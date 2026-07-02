@@ -942,6 +942,8 @@ function buildTrayMenu(currentTheme, currentStyle) {
 let balanceTooltipWin = null
 let isTooltipOpen = false
 let isBalanceVisible = true
+let lastBalanceRefreshTime = Date.now()
+let lastChatgptRefreshTime = Date.now()
 
 ipcMain.handle('fetch-balance', async () => {
   return await fetchBalanceData()
@@ -1019,6 +1021,7 @@ ipcMain.on('open-balance-tooltip', (_, data) => {
 
 ipcMain.handle('refresh-balance-tooltip', async () => {
   const data = await fetchBalanceData()
+  lastBalanceRefreshTime = Date.now()
   if (mainWin && !mainWin.isDestroyed()) {
     mainWin.webContents.send('balance-update', data)
   }
@@ -1034,6 +1037,14 @@ ipcMain.on('resize-balance-tooltip', (_, height) => {
 ipcMain.handle('read-clipboard', () => {
   const { clipboard } = require('electron')
   return clipboard.readText()
+})
+
+ipcMain.handle('get-last-balance-refresh-time', () => {
+  return lastBalanceRefreshTime
+})
+
+ipcMain.handle('get-last-chatgpt-refresh-time', () => {
+  return lastChatgptRefreshTime
 })
 
 ipcMain.handle('update-balance-cookie', async (_, cookie) => {
@@ -1143,6 +1154,7 @@ ipcMain.handle('open-chatgpt-tooltip', async (_, data) => {
 
 ipcMain.handle('refresh-chatgpt-tooltip', async () => {
   const data = await fetchChatGPTUsage()
+  lastChatgptRefreshTime = Date.now()
   if (mainWin && !mainWin.isDestroyed()) {
     mainWin.webContents.send('chatgpt-update', data)
   }
@@ -1282,6 +1294,7 @@ function createWindow() {
 
   const fetchAndNotifyBalance = async () => {
     const data = await fetchBalanceData()
+    lastBalanceRefreshTime = Date.now()
     if (mainWin && !mainWin.isDestroyed()) {
       mainWin.webContents.send('balance-update', data)
     }
@@ -1289,6 +1302,7 @@ function createWindow() {
 
   const fetchAndNotifyChatGPT = async () => {
     const data = await fetchChatGPTUsage()
+    lastChatgptRefreshTime = Date.now()
     if (mainWin && !mainWin.isDestroyed()) {
       mainWin.webContents.send('chatgpt-update', data)
     }

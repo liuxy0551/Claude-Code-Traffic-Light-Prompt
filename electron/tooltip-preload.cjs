@@ -5,10 +5,12 @@ contextBridge.exposeInMainWorld('tooltipAPI', {
   // MiMo 相关
   refreshBalance: () => ipcRenderer.invoke('refresh-balance-tooltip'),
   updateCookie: (cookie) => ipcRenderer.invoke('update-balance-cookie', cookie),
+  getLastBalanceRefreshTime: () => ipcRenderer.invoke('get-last-balance-refresh-time'),
 
   // ChatGPT 相关
   refreshChatGPT: () => ipcRenderer.invoke('refresh-chatgpt-tooltip'),
   updateToken: (token) => ipcRenderer.invoke('update-chatgpt-token', token),
+  getLastChatgptRefreshTime: () => ipcRenderer.invoke('get-last-chatgpt-refresh-time'),
 
   // 通用
   resize: (height) => ipcRenderer.send('resize-balance-tooltip', height),

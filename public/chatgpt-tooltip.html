@@ -147,10 +147,15 @@
     var REFRESH_INTERVAL = 180000; // 默认 3 min，会从主进程获取
     var countdownTimer = null;
 
-    // 从主进程获取刷新间隔
+    // 从主进程获取刷新间隔和上次刷新时间
     if (window.tooltipAPI && window.tooltipAPI.getPollInterval) {
       window.tooltipAPI.getPollInterval().then(function(minutes) {
         REFRESH_INTERVAL = minutes * 60000;
+      });
+    }
+    if (window.tooltipAPI && window.tooltipAPI.getLastChatgptRefreshTime) {
+      window.tooltipAPI.getLastChatgptRefreshTime().then(function(time) {
+        if (time) lastRefreshTime = time;
       });
     }
 
