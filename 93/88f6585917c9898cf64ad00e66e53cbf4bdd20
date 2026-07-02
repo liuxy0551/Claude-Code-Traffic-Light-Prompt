@@ -1,0 +1,30 @@
+electron/tooltip-preload.cjs
+  s_f863d7085d7939::t_8e371c7555435c 8,13
+public/balance-tooltip.html
+  s_f863d7085d7939::t_b161dc40e5ea00 147,153-155
+  s_f863d7085d7939::t_6eefd7aa3d6c0d 156-157
+electron/main.cjs
+  s_f863d7085d7939::t_c20eec8307ee95 1024
+  s_f863d7085d7939::t_1e291c685539a1 1157
+  s_f863d7085d7939::t_398a131c679143 1297,1305
+  s_f863d7085d7939::t_264dda2c683491 1042-1049
+  s_f863d7085d7939::t_1813f5fa2bbe9d 945-946
+public/chatgpt-tooltip.html
+  s_f863d7085d7939::t_7515fc3bedcae5 150,156-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "9388f6585917c9898cf64ad00e66e53cbf4bdd20",
+  "prompts": {},
+  "sessions": {
+    "s_f863d7085d7939": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "79bd1288-8cd7-4cc1-bd41-cd4d017f1851",
+        "model": "mimo-v2.5-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
