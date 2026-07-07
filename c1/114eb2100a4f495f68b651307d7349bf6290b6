@@ -1,0 +1,44 @@
+package.json
+  h_0c940a947252a6 4
+public/chatgpt-tooltip.html
+  s_b3b063625ddfb7::t_3c6a2247c85609 216-221,232
+  s_6bc6cacbf5eb68::t_bd4468620bb71a 179
+  s_6bc6cacbf5eb68::t_32c97eddd4e06c 174-176,180-182
+  s_b3b063625ddfb7::t_792291867513e7 198-209,214-215
+  s_6bc6cacbf5eb68::t_e9c56b499b0f54 164-167
+  s_6bc6cacbf5eb68::t_c681e748fc611f 177-178
+public/balance-tooltip.html
+  s_6bc6cacbf5eb68::t_bd9ebcb8c67c49 174-175
+  s_6bc6cacbf5eb68::t_c84599bd945e7e 161-164
+  s_6bc6cacbf5eb68::t_963857eab010fc 176
+  s_6bc6cacbf5eb68::t_85653e91b366f5 171-173,177-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c1114eb2100a4f495f68b651307d7349bf6290b6",
+  "prompts": {},
+  "humans": {
+    "h_0c940a947252a6": {
+      "author": "liuyi <liuyi@dtstack.com>"
+    }
+  },
+  "sessions": {
+    "s_6bc6cacbf5eb68": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "827be914-6ab1-48b8-b924-c04ac16eed04",
+        "model": "mimo-v2.5-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    },
+    "s_b3b063625ddfb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "588b64aa-680d-4a02-bd42-e0aa3d4693cf",
+        "model": "mimo-v2.5-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
