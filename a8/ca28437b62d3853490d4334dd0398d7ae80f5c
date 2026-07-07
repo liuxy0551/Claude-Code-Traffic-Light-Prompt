@@ -1,0 +1,19 @@
+.github/workflows/build.yml
+  s_b3b063625ddfb7::t_26ae13c87f154e 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a8ca28437b62d3853490d4334dd0398d7ae80f5c",
+  "prompts": {},
+  "sessions": {
+    "s_b3b063625ddfb7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "588b64aa-680d-4a02-bd42-e0aa3d4693cf",
+        "model": "mimo-v2.5-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
