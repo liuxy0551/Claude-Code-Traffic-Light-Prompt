@@ -161,17 +161,25 @@
 
     function getRemainingStr() {
       var remaining = Math.max(0, REFRESH_INTERVAL - (Date.now() - lastRefreshTime));
-      var min = Math.floor(remaining / 60000);
-      var sec = Math.floor((remaining % 60000) / 1000);
-      if (min > 0) return min + 'min' + (sec > 0 ? sec + 's' : '');
-      return sec + 's';
+      var totalSec = Math.ceil(remaining / 1000);
+      var min = Math.floor(totalSec / 60);
+      var sec = totalSec % 60;
+      return min + ':' + (sec < 10 ? '0' : '') + sec;
     }
 
     function startCountdown() {
       if (countdownTimer) clearInterval(countdownTimer);
       countdownTimer = setInterval(function() {
         var btn = document.querySelector('.refresh-btn');
-        if (btn && !btn.disabled) btn.textContent = '刷新 (' + getRemainingStr() + ')';
+        if (!btn || btn.disabled) return;
+        var remaining = Math.max(0, REFRESH_INTERVAL - (Date.now() - lastRefreshTime));
+        if (remaining <= 0) {
+          clearInterval(countdownTimer);
+          countdownTimer = null;
+          doRefresh();
+        } else {
+          btn.textContent = '刷新 (' + getRemainingStr() + ')';
+        }
       }, 1000);
     }
 
@@ -187,10 +195,30 @@
       return d + ' 天' + (rh > 0 ? ' ' + rh + ' 小时' : '') + (m > 0 ? ' ' + m + ' 分钟' : '');
     }
 
+    function formatResetAt(resetAt, isWeekly) {
+      var d = new Date(resetAt * 1000);
+      var hh = String(d.getHours()).padStart(2, '0');
+      var mm = String(d.getMinutes()).padStart(2, '0');
+      if (isWeekly) {
+        var mon = d.getMonth() + 1;
+        var day = d.getDate();
+        return mon + '月' + day + '日 ' + hh + ':' + mm;
+      }
+      return hh + ':' + mm;
+    }
+
     function renderWindow(name, windowData) {
       var pct = windowData.usedPercent;
       var barColor = pct < 75 ? '#30D158' : pct < 90 ? '#FF9F0A' : '#FF3B30';
       var resetStr = formatResetTime(windowData.resetAfterSeconds);
+      var isWeekly = name === '周';
+      var resetAtStr = windowData.resetAt ? formatResetAt(windowData.resetAt, isWeekly) : '';
+      var resetLabel;
+      if (isWeekly) {
+        resetLabel = resetAtStr;
+      } else {
+        resetLabel = resetAtStr ? resetAtStr + '（' + resetStr + '后）' : resetStr + '后';
+      }
 
       return '<div class="window-section">' +
         '<div class="window-header">' +
@@ -201,7 +229,7 @@
           '<span class="window-percent" style="color:' + barColor + '">' + pct + '%</span>' +
         '</div>' +
         '<div class="details">' +
-          '<span class="label">重置</span><span class="value">' + resetStr + '后</span>' +
+          '<span class="label">重置</span><span class="value">' + resetLabel + '</span>' +
         '</div>' +
       '</div>';
     }

@@ -158,17 +158,25 @@
 
     function getRemainingStr() {
       var remaining = Math.max(0, REFRESH_INTERVAL - (Date.now() - lastRefreshTime));
-      var min = Math.floor(remaining / 60000);
-      var sec = Math.floor((remaining % 60000) / 1000);
-      if (min > 0) return min + 'min' + (sec > 0 ? sec + 's' : '');
-      return sec + 's';
+      var totalSec = Math.ceil(remaining / 1000);
+      var min = Math.floor(totalSec / 60);
+      var sec = totalSec % 60;
+      return min + ':' + (sec < 10 ? '0' : '') + sec;
     }
 
     function startCountdown() {
       if (countdownTimer) clearInterval(countdownTimer);
       countdownTimer = setInterval(function() {
         var btn = document.querySelector('.refresh-btn');
-        if (btn && !btn.disabled) btn.textContent = '刷新 (' + getRemainingStr() + ')';
+        if (!btn || btn.disabled) return;
+        var remaining = Math.max(0, REFRESH_INTERVAL - (Date.now() - lastRefreshTime));
+        if (remaining <= 0) {
+          clearInterval(countdownTimer);
+          countdownTimer = null;
+          doRefresh();
+        } else {
+          btn.textContent = '刷新 (' + getRemainingStr() + ')';
+        }
       }, 1000);
     }
 

@@ -16,6 +16,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: echo "" > .npmrc
       - run: npm run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

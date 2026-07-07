@@ -493,7 +493,6 @@ export default function App() {
                 WebkitAppRegion: "no-drag",
                 fontVariantNumeric: "tabular-nums",
               } as React.CSSProperties}
-              title="点击查看余量"
             >
               {balancePercent !== null ? balancePercent + "%" : "0%"}
             </button>
@@ -528,7 +527,6 @@ export default function App() {
                 WebkitAppRegion: "no-drag",
                 fontVariantNumeric: "tabular-nums",
               } as React.CSSProperties}
-              title="5小时用量"
             >
               {pct}%
             </button>
@@ -563,7 +561,6 @@ export default function App() {
                 WebkitAppRegion: "no-drag",
                 fontVariantNumeric: "tabular-nums",
               } as React.CSSProperties}
-              title="周用量"
             >
               {pct}%
             </button>
