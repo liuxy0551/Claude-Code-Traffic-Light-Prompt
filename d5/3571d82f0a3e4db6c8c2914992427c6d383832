@@ -1,0 +1,26 @@
+package.json
+  h_0c940a947252a6 4
+public/chatgpt-tooltip.html
+  s_1081ee37e0e54a::t_c43c56a581847c 17-18,150,188-218,285-286,314-316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d53571d82f0a3e4db6c8c2914992427c6d383832",
+  "prompts": {},
+  "humans": {
+    "h_0c940a947252a6": {
+      "author": "liuyi <liuyi@dtstack.com>"
+    }
+  },
+  "sessions": {
+    "s_1081ee37e0e54a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f04c4-d26f-7660-a986-dd78c806fe11",
+        "model": "unknown"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
