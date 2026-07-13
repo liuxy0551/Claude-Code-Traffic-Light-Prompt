@@ -14,7 +14,8 @@
     overflow: hidden;
   }
   .panel {
-    position: absolute; inset: 4px;
+    position: relative;
+    margin: 4px;
     background: linear-gradient(180deg, #2c2c2e 0%, #1c1c1e 100%);
     border: 1px solid rgba(255,255,255,0.08);
     border-radius: 14px;
@@ -146,6 +147,7 @@
     var lastRefreshTime = Date.now();
     var REFRESH_INTERVAL = 180000; // 默认 3 min，会从主进程获取
     var countdownTimer = null;
+    var resizeObserver = null;
 
     // 从主进程获取刷新间隔和上次刷新时间
     if (window.tooltipAPI && window.tooltipAPI.getPollInterval) {
@@ -181,6 +183,37 @@
           btn.textContent = '刷新 (' + getRemainingStr() + ')';
         }
       }, 1000);
+    }
+
+    function resizeToContent() {
+      if (!window.tooltipAPI || !window.tooltipAPI.resizeChatGPT) return;
+      var measure = function() {
+        var panel = document.getElementById('root');
+        if (!panel) return;
+        var rect = panel.getBoundingClientRect();
+        window.tooltipAPI.resizeChatGPT(Math.ceil(rect.height + 8));
+      };
+
+      // 这里做多次补测，避免首帧字体/按钮文案/textarea 渲染晚一点时偶发多出几像素
+      window.requestAnimationFrame(function() {
+        measure();
+        window.requestAnimationFrame(measure);
+      });
+      window.setTimeout(measure, 24);
+      window.setTimeout(measure, 80);
+    }
+
+    function ensureResizeObserver() {
+      if (!window.ResizeObserver) return;
+      var panel = document.getElementById('root');
+      if (!panel) return;
+      if (resizeObserver) resizeObserver.disconnect();
+
+      // 根容器改成自然流后，监听真实内容高度变化即可，不会再被窗口尺寸反向污染
+      resizeObserver = new ResizeObserver(function() {
+        resizeToContent();
+      });
+      resizeObserver.observe(panel);
     }
 
     function formatResetTime(seconds) {
@@ -249,11 +282,8 @@
           '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新 (' + getRemainingStr() + ')</button>' +
           '<button class="settings-btn" onclick="toggleToken()">Token设置</button></div>' +
           buildTokenSection();
-        if (window.tooltipAPI && window.tooltipAPI.resizeChatGPT) {
-          var h = 145;
-          if (showToken) h += 145;
-          window.tooltipAPI.resizeChatGPT(h);
-        }
+        ensureResizeObserver();
+        resizeToContent();
         startCountdown();
         return;
       }
@@ -281,14 +311,9 @@
 
       root.innerHTML = html;
 
-      // 高度动态计算
-      if (window.tooltipAPI && window.tooltipAPI.resizeChatGPT) {
-        var h = 100;
-        if (data.primary) h += 50;
-        if (data.secondary) h += 50;
-        if (showToken) h += 130;
-        window.tooltipAPI.resizeChatGPT(h);
-      }
+      ensureResizeObserver();
+      // 周窗口只显示一条时，按真实内容回收高度，避免底部留白
+      resizeToContent();
       startCountdown();
     }
 
