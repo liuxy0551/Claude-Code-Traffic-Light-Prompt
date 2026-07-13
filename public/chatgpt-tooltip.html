@@ -263,14 +263,16 @@
         '<button class="close-btn" onclick="window.close()">×</button>' +
       '</div>';
 
-      // 5小时窗口
+      // primary 窗口：根据 windowSeconds 自动判断标签
       if (data.primary) {
-        html += renderWindow('5小时', data.primary);
+        var primaryLabel = data.primary.windowSeconds >= 86400 ? '周' : '5小时';
+        html += renderWindow(primaryLabel, data.primary);
       }
 
-      // 周窗口
+      // secondary 窗口（仅当与 primary 不同时显示）
       if (data.secondary) {
-        html += renderWindow('周', data.secondary);
+        var secondaryLabel = data.secondary.windowSeconds >= 86400 ? '周' : '5小时';
+        html += renderWindow(secondaryLabel, data.secondary);
       }
 
       html += '<div class="btn-row"><button class="refresh-btn" onclick="doRefresh()">刷新 (' + getRemainingStr() + ')</button>' +

@@ -499,9 +499,12 @@ export default function App() {
           );
         })()}
 
-        {/* Codex 5h 用量：左下角 */}
+        {/* Codex 用量：当 primary 不是周窗口时在左下角显示 */}
         {usageMode === "chatgpt" && (() => {
-          const pct = chatgptUsage?.isValid && chatgptUsage.primary ? chatgptUsage.primary.usedPercent : 0;
+          const p = chatgptUsage?.primary;
+          const isPrimaryWeekly = p && p.windowSeconds >= 86400;
+          if (isPrimaryWeekly) return null; // primary 就是周窗口，不在左下角重复显示
+          const pct = chatgptUsage?.isValid && p ? p.usedPercent : 0;
           return (
             <button
               className="no-drag"
@@ -533,9 +536,11 @@ export default function App() {
           );
         })()}
 
-        {/* Codex 周用量：右下角 */}
+        {/* Codex 周用量：右下角，兼容 secondary 或 primary 为周窗口的情况 */}
         {usageMode === "chatgpt" && (() => {
-          const pct = chatgptUsage?.isValid && chatgptUsage.secondary ? chatgptUsage.secondary.usedPercent : 0;
+          const weekly = chatgptUsage?.secondary
+            || (chatgptUsage?.primary && chatgptUsage.primary.windowSeconds >= 86400 ? chatgptUsage.primary : null);
+          const pct = chatgptUsage?.isValid && weekly ? weekly.usedPercent : 0;
           return (
             <button
               className="no-drag"
