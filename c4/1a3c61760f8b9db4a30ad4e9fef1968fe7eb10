@@ -1,0 +1,21 @@
+src/app/App.tsx
+  s_cdefa1a713bde4::t_9ad80f9b6bf8ea 502,504-507,539,541-543
+public/chatgpt-tooltip.html
+  s_cdefa1a713bde4::t_9a910076f5c8f6 266,268-269,272,274-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c41a3c61760f8b9db4a30ad4e9fef1968fe7eb10",
+  "prompts": {},
+  "sessions": {
+    "s_cdefa1a713bde4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a8092023-7601-483e-8528-243f441e2450",
+        "model": "mimo-v2.5-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
