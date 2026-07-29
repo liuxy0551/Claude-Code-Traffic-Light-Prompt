@@ -104,6 +104,8 @@ export default function App() {
     window.electronAPI.getStyle().then((s) => {
       if (s === "single" || s === "triple-vertical" || s === "triple-horizontal") setStyleState(s as Style);
     });
+    // 初始状态为绿色时，2.5秒后停止闪烁
+    greenTimerRef.current = setTimeout(() => setGreenSteady(true), 2500);
   }, []);
 
   useEffect(() => {

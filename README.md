@@ -23,7 +23,7 @@
   ```bash
   npm i          # 安装依赖
   npm run dev    # 开发模式
-  npm start      # 构建并运行
+  npm run watch  # 本地预览
   npm run dist   # 打包
   ```
 

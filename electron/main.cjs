@@ -3,19 +3,20 @@ const path = require('path')
 const fs = require('fs')
 
 const os = require('os')
-// macOS/Linux 用 /tmp（向后兼容），Windows 用 ~/.claude/（/tmp 不存在）
-const TMP          = process.platform === 'win32' ? path.join(os.homedir(), '.claude') : '/tmp'
-const STATE_FILE   = path.join(TMP, 'cc_traffic_light_state')
-const PID_FILE     = path.join(TMP, 'cc_traffic_light_electron.pid')
-const THEME_FILE   = path.join(TMP, 'cc_traffic_light_theme')
-const MUTE_FILE    = path.join(TMP, 'cc_traffic_light_mute')
-const STYLE_FILE   = path.join(TMP, 'cc_traffic_light_style')
-const COOKIE_FILE  = path.join(TMP, 'cc_traffic_light_cookie')
-const CHATGPT_TOKEN_FILE = path.join(TMP, 'cc_traffic_light_chatgpt_token')
-const USAGE_MODE_FILE = path.join(TMP, 'cc_traffic_light_usage_mode') // 'mimo' | 'chatgpt' | 'none'
-const POLL_INTERVAL_FILE = path.join(TMP, 'cc_traffic_light_poll_interval') // 分钟数
-// 统计文件存到 ~/.claude/，跨平台持久化，不放 /tmp 避免重启丢失
-const STATS_FILE   = path.join(os.homedir(), '.claude', 'cc_traffic_light_stats.json')
+// 所有配置文件统一存到 ~/.agents/，跨平台持久化，重启不丢失
+const AGENTS_DIR     = path.join(os.homedir(), '.agents')
+// 确保目录存在
+if (!fs.existsSync(AGENTS_DIR)) { fs.mkdirSync(AGENTS_DIR, { recursive: true }) }
+const STATE_FILE   = path.join(AGENTS_DIR, 'cc_traffic_light_state')
+const PID_FILE     = path.join(AGENTS_DIR, 'cc_traffic_light_electron.pid')
+const THEME_FILE   = path.join(AGENTS_DIR, 'cc_traffic_light_theme')
+const MUTE_FILE    = path.join(AGENTS_DIR, 'cc_traffic_light_mute')
+const STYLE_FILE   = path.join(AGENTS_DIR, 'cc_traffic_light_style')
+const COOKIE_FILE  = path.join(AGENTS_DIR, 'cc_traffic_light_cookie')
+const CHATGPT_TOKEN_FILE = path.join(AGENTS_DIR, 'cc_traffic_light_chatgpt_token')
+const USAGE_MODE_FILE = path.join(AGENTS_DIR, 'cc_traffic_light_usage_mode') // 'mimo' | 'chatgpt' | 'none'
+const POLL_INTERVAL_FILE = path.join(AGENTS_DIR, 'cc_traffic_light_poll_interval') // 分钟数
+const STATS_FILE   = path.join(AGENTS_DIR, 'cc_traffic_light_stats.json')
 const distPath     = path.join(__dirname, '../dist/index.html')
 const isDev        = !fs.existsSync(distPath)
 
@@ -378,18 +379,13 @@ function getCodexHooksPath() {
 }
 
 function setupAllHooks() {
-  setupAllHooks()
-  setupCodexHooks()
-}
-
-function setupAllHooks() {
   const settingsPath = getClaudeSettingsPath()
   const settingsDir  = path.dirname(settingsPath)
 
   const isWin = process.platform === 'win32'
   // Windows 用 %USERPROFILE% 环境变量，避免硬编码绝对路径导致跨机器失效
   const stateCmd = (color) => isWin
-    ? `cmd /c "echo ${color}> %USERPROFILE%\\.claude\\cc_traffic_light_state"`
+    ? `cmd /c "echo ${color}> %USERPROFILE%\\.agents\\cc_traffic_light_state"`
     : `echo ${color} > ${STATE_FILE}`
 
   // Elicitation 在旧版 CC（<2.1.76）不支持，改用 PreToolUse+AskUserQuestion 触发黄灯
@@ -458,7 +454,7 @@ function setupCodexHooks() {
 
   const isWin = process.platform === 'win32'
   const stateCmd = (color) => isWin
-    ? `cmd /c "echo ${color}> %USERPROFILE%\\.claude\\cc_traffic_light_state"`
+    ? `cmd /c "echo ${color}> %USERPROFILE%\\.agents\\cc_traffic_light_state"`
     : `echo ${color} > ${STATE_FILE}`
 
   // Codex 使用和 Agent 相同的事件名
@@ -798,12 +794,12 @@ function buildTrayMenu(currentTheme, currentStyle) {
       ]
     },
     {
-      label: '📝 写入配置',
+      label: '📝 写入 hooks',
       submenu: [
         {
           label: 'Claude Code',
           click: () => {
-            setupClaudeHooks()
+            setupAllHooks()
             const { dialog } = require('electron')
             dialog.showMessageBox({
               type: 'info',
@@ -832,6 +828,7 @@ function buildTrayMenu(currentTheme, currentStyle) {
           label: '以上全部',
           click: () => {
             setupAllHooks()
+            setupCodexHooks()
             const { dialog } = require('electron')
             dialog.showMessageBox({
               type: 'info',
@@ -849,8 +846,8 @@ function buildTrayMenu(currentTheme, currentStyle) {
             const { clipboard, dialog } = require('electron')
             const isWin = process.platform === 'win32'
             const snippet = isWin
-              ? `"UserPromptSubmit": [{"hooks": [{"type": "command","command": "cmd /c \\"echo red> %USERPROFILE%\\\\.claude\\\\cc_traffic_light_state\\""}]}],\n  "Stop": [{"hooks": [{"type": "command","command": "cmd /c \\"echo green> %USERPROFILE%\\\\.claude\\\\cc_traffic_light_state\\""}]}],\n  "PreToolUse": [{"matcher": "AskUserQuestion","hooks": [{"type": "command","command": "cmd /c \\"echo yellow> %USERPROFILE%\\\\.claude\\\\cc_traffic_light_state\\""}]}]`
-              : `"UserPromptSubmit": [{"hooks": [{"type": "command","command": "echo red > /tmp/cc_traffic_light_state"}]}],\n  "Stop": [{"hooks": [{"type": "command","command": "echo green > /tmp/cc_traffic_light_state"}]}],\n  "PreToolUse": [{"matcher": "AskUserQuestion","hooks": [{"type": "command","command": "echo yellow > /tmp/cc_traffic_light_state"}]}]`
+              ? `"UserPromptSubmit": [{"hooks": [{"type": "command","command": "cmd /c \\"echo red> %USERPROFILE%\\\\.agents\\\\cc_traffic_light_state\\""}]}],\n  "Stop": [{"hooks": [{"type": "command","command": "cmd /c \\"echo green> %USERPROFILE%\\\\.agents\\\\cc_traffic_light_state\\""}]}],\n  "PreToolUse": [{"matcher": "AskUserQuestion","hooks": [{"type": "command","command": "cmd /c \\"echo yellow> %USERPROFILE%\\\\.agents\\\\cc_traffic_light_state\\""}]}]`
+              : `"UserPromptSubmit": [{"hooks": [{"type": "command","command": "echo red > ~/.agents/cc_traffic_light_state"}]}],\n  "Stop": [{"hooks": [{"type": "command","command": "echo green > ~/.agents/cc_traffic_light_state"}]}],\n  "PreToolUse": [{"matcher": "AskUserQuestion","hooks": [{"type": "command","command": "echo yellow > ~/.agents/cc_traffic_light_state"}]}]`
             clipboard.writeText(snippet)
             dialog.showMessageBox({
               type: 'info',
@@ -1171,7 +1168,7 @@ function createWindow() {
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize
 
   // 读取上次保存的位置，若超出屏幕则重置到右上角
-  const POS_FILE = path.join(require('os').tmpdir(), 'cc_traffic_light_pos')
+  const POS_FILE = path.join(AGENTS_DIR, 'cc_traffic_light_pos')
   let wx = sw - 120, wy = 80
   try {
     if (fs.existsSync(POS_FILE)) {
@@ -1232,7 +1229,7 @@ function createWindow() {
   mainWin.on('moved', () => {
     try {
       const [x, y] = mainWin.getPosition()
-      fs.writeFileSync(path.join(require('os').tmpdir(), 'cc_traffic_light_pos'), `${x},${y}`)
+      fs.writeFileSync(path.join(AGENTS_DIR, 'cc_traffic_light_pos'), `${x},${y}`)
     } catch {}
   })
 
@@ -1329,8 +1326,8 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // 确保 ~/.claude 目录存在
-  try { fs.mkdirSync(TMP, { recursive: true }) } catch {}
+  // 确保 ~/.agents 目录存在
+  try { fs.mkdirSync(AGENTS_DIR, { recursive: true }) } catch {}
 
   if (process.platform !== 'win32') {
     // 杀掉旧的 Python 版，防止两个红绿灯同时出现
