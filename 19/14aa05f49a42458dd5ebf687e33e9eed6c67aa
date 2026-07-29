@@ -1,0 +1,39 @@
+electron/main.cjs
+  s_cca86c109619da::t_481b95f0acf52a 6-19
+  s_cca86c109619da::t_57e8821441221c 802
+  s_cca86c109619da::t_5d1b42bf001871 457
+  s_cca86c109619da::t_1fe497a0d6ca4d 831
+  s_cca86c109619da::t_3a5c748a0b6565 1232
+  s_cca86c109619da::t_4b50f549312e14 388
+  h_0c940a947252a6 797
+  s_cca86c109619da::t_e35abe1f61e86b 1329-1330
+  s_cca86c109619da::t_a40a91d1286df7 1171
+  s_cca86c109619da::t_cfe7aae6d533bd 849-850
+src/app/App.tsx
+  s_cca86c109619da::t_b3ea33189988c3 107-108
+package.json
+  h_0c940a947252a6 4
+README.md
+  h_0c940a947252a6 26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.15",
+  "base_commit_sha": "1914aa05f49a42458dd5ebf687e33e9eed6c67aa",
+  "prompts": {},
+  "humans": {
+    "h_0c940a947252a6": {
+      "author": "liuyi <liuyi@dtstack.com>"
+    }
+  },
+  "sessions": {
+    "s_cca86c109619da": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4d5c86e5-9f2a-4a7b-937d-774873549dfd",
+        "model": "mimo-v2.5-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
