@@ -1,0 +1,25 @@
+electron/main.cjs
+  s_c360f492c6d590::t_4b62c8a55fe883 1233
+  s_c360f492c6d590::t_af6c756d45c41d 850
+  s_c360f492c6d590::t_84e902e13ebd5e 1330-1331
+  s_c360f492c6d590::t_3ee5b7ea340801 6,8,10-20
+  s_c360f492c6d590::t_769733e7fd8e69 389,458
+  s_c360f492c6d590::t_0ba47ff2bdf2fc 851
+  s_c360f492c6d590::t_4c3b66c011c6d9 1172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "39ad4d9c20e9be1bd910679ce0ff8f2026c3843e",
+  "prompts": {},
+  "sessions": {
+    "s_c360f492c6d590": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "514e0d09-eb77-44d0-b7e6-71628ddc8669",
+        "model": "deepseek-v4-pro"
+      },
+      "human_author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
