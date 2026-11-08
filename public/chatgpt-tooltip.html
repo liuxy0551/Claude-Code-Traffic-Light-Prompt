@@ -50,13 +50,12 @@
     transition: width 0.5s ease;
   }
   .details {
-    display: grid; grid-template-columns: auto 1fr;
-    gap: 2px 10px; font-size: 11px;
+    font-size: 11px;
     margin-top: 4px;
+    padding-left: 26px;
     -webkit-app-region: drag;
   }
-  .label { opacity: 0.5; text-align: right; }
-  .value { opacity: 0.85; font-variant-numeric: tabular-nums; }
+  .value { opacity: 0.85; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .btn-row {
     display: flex; justify-content: center; gap: 8px;
     margin-top: 8px;
@@ -129,7 +128,7 @@
     margin-bottom: 4px;
   }
   .window-name {
-    font-size: 11px; opacity: 0.5; min-width: 32px;
+    font-size: 11px; opacity: 0.5; width: 20px; flex-shrink: 0;
   }
   .window-percent {
     font-size: 13px; font-weight: 600; min-width: 44px; text-align: right;
@@ -216,16 +215,22 @@
       resizeObserver.observe(panel);
     }
 
+    // 格式化倒计时（如 3h30m、4d23h34m）
     function formatResetTime(seconds) {
-      if (seconds < 60) return seconds + ' 秒';
+      if (!seconds || seconds <= 0) return '';
+      if (seconds < 60) return seconds + 's';
       var min = Math.ceil(seconds / 60);
-      if (min < 60) return min + ' 分钟';
+      if (min < 60) return min + 'm';
       var h = Math.floor(min / 60);
       var m = min % 60;
-      if (h < 24) return h + ' 小时' + (m > 0 ? ' ' + m + ' 分钟' : '');
+      if (h < 24) return h + 'h' + (m > 0 ? m + 'm' : '');
       var d = Math.floor(h / 24);
       var rh = h % 24;
-      return d + ' 天' + (rh > 0 ? ' ' + rh + ' 小时' : '') + (m > 0 ? ' ' + m + ' 分钟' : '');
+      var res = d + 'd';
+      // 存在天数时拼接天、时、分
+      if (rh > 0 || m > 0) res += rh + 'h';
+      if (m > 0) res += m + 'm';
+      return res;
     }
 
     function formatResetAt(resetAt, isWeekly) {
@@ -246,11 +251,13 @@
       var resetStr = formatResetTime(windowData.resetAfterSeconds);
       var isWeekly = name === '周';
       var resetAtStr = windowData.resetAt ? formatResetAt(windowData.resetAt, isWeekly) : '';
-      var resetLabel;
-      if (isWeekly) {
+      var resetLabel = '';
+      if (resetAtStr && resetStr) {
+        resetLabel = resetAtStr + '（' + resetStr + '）';
+      } else if (resetAtStr) {
         resetLabel = resetAtStr;
-      } else {
-        resetLabel = resetAtStr ? resetAtStr + '（' + resetStr + '后）' : resetStr + '后';
+      } else if (resetStr) {
+        resetLabel = resetStr;
       }
 
       return '<div class="window-section">' +
@@ -261,9 +268,7 @@
           '</div>' +
           '<span class="window-percent" style="color:' + barColor + '">' + pct + '%</span>' +
         '</div>' +
-        '<div class="details">' +
-          '<span class="label">重置</span><span class="value">' + resetLabel + '</span>' +
-        '</div>' +
+        (resetLabel ? '<div class="details"><span class="value">' + resetLabel + '</span></div>' : '') +
       '</div>';
     }
 
@@ -295,13 +300,13 @@
 
       // primary 窗口：根据 windowSeconds 自动判断标签
       if (data.primary) {
-        var primaryLabel = data.primary.windowSeconds >= 86400 ? '周' : '5小时';
+        var primaryLabel = data.primary.windowSeconds >= 86400 ? '周' : '5h';
         html += renderWindow(primaryLabel, data.primary);
       }
 
       // secondary 窗口（仅当与 primary 不同时显示）
       if (data.secondary) {
-        var secondaryLabel = data.secondary.windowSeconds >= 86400 ? '周' : '5小时';
+        var secondaryLabel = data.secondary.windowSeconds >= 86400 ? '周' : '5h';
         html += renderWindow(secondaryLabel, data.secondary);
       }
 
