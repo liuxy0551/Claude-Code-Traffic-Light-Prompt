@@ -372,6 +372,7 @@ export default function App() {
       height: 20,
       borderRadius: 8,
       border: "none",
+      outline: "none",
       padding: "0 3px",
       fontSize: 10,
       fontWeight: 600,

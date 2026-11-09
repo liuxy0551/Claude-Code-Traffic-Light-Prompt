@@ -6,3 +6,9 @@ html, body, #root {
   height: 100%;
   overflow: hidden;
 }
+
+button:focus,
+button:focus-visible {
+  outline: none;
+}
+
