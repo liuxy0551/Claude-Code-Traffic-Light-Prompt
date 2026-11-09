@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>Codex 用量</title>
+<title>Codex 余量</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -246,8 +246,9 @@
     }
 
     function renderWindow(name, windowData) {
-      var pct = windowData.usedPercent;
-      var barColor = pct < 75 ? '#30D158' : pct < 90 ? '#FF9F0A' : '#FF3B30';
+      var used = windowData.usedPercent != null ? windowData.usedPercent : 0;
+      var remainingPct = Math.max(0, Math.min(100, 100 - used));
+      var barColor = remainingPct > 50 ? '#30D158' : remainingPct >= 20 ? '#FF9F0A' : '#FF3B30';
       var resetStr = formatResetTime(windowData.resetAfterSeconds);
       var isWeekly = name === '周';
       var resetAtStr = windowData.resetAt ? formatResetAt(windowData.resetAt, isWeekly) : '';
@@ -264,9 +265,9 @@
         '<div class="window-header">' +
           '<span class="window-name">' + name + '</span>' +
           '<div style="flex:1">' +
-            '<div class="progress-bg"><div class="progress-bar" style="width:' + Math.min(pct, 100) + '%;background:' + barColor + '"></div></div>' +
+            '<div class="progress-bg"><div class="progress-bar" style="width:' + Math.min(remainingPct, 100) + '%;background:' + barColor + '"></div></div>' +
           '</div>' +
-          '<span class="window-percent" style="color:' + barColor + '">' + pct + '%</span>' +
+          '<span class="window-percent" style="color:' + barColor + '">' + remainingPct + '%</span>' +
         '</div>' +
         (resetLabel ? '<div class="details"><span class="value">' + resetLabel + '</span></div>' : '') +
       '</div>';
@@ -278,7 +279,7 @@
       if (!data || !data.isValid) {
         root.innerHTML =
           '<div class="title-row">' +
-            '<span class="title">Codex 用量</span>' +
+            '<span class="title">Codex 余量</span>' +
             '<button class="close-btn" onclick="window.close()">×</button>' +
           '</div>' +
           '<div class="error-state">查询失败<br><span style="font-size:10px;opacity:0.6">' +
@@ -294,7 +295,7 @@
       }
 
       var html = '<div class="title-row">' +
-        '<span class="title">Codex 用量</span>' +
+        '<span class="title">Codex 余量</span>' +
         '<button class="close-btn" onclick="window.close()">×</button>' +
       '</div>';
 

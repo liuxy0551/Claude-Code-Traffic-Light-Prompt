@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>MiMo 用量</title>
+<title>MiMo 余量</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
@@ -187,7 +187,7 @@
       if (!items.length) {
         root.innerHTML =
           '<div class="title-row">' +
-            '<span class="title">MiMo 用量</span>' +
+            '<span class="title">MiMo 余量</span>' +
             '<button class="close-btn" onclick="window.close()">×</button>' +
           '</div>' +
           '<div class="error-state">查询失败<br><span style="font-size:10px;opacity:0.6">' +
@@ -206,15 +206,20 @@
       }
 
       var html = '<div class="title-row">' +
-        '<span class="title">MiMo 用量</span>' +
+        '<span class="title">MiMo 余量</span>' +
         '<button class="close-btn" onclick="window.close()">×</button>' +
       '</div>';
 
       for (var i = 0; i < items.length; i++) {
         var d = items[i];
-        var pctNum = parseFloat(d.extra) || 0;
+        var pctNum = 0;
+        if (typeof d.remaining === 'number' && typeof d.total === 'number' && d.total > 0) {
+          pctNum = (d.remaining / d.total) * 100;
+        } else if (d.extra) {
+          pctNum = parseFloat(d.extra) || 0;
+        }
         var pct = pctNum.toFixed(1);
-        var barColor = pctNum < 75 ? '#30D158' : pctNum < 90 ? '#FF9F0A' : '#FF3B30';
+        var barColor = pctNum > 50 ? '#30D158' : pctNum >= 20 ? '#FF9F0A' : '#FF3B30';
         if (i > 0) {
           html += '<div style="border-top:1px solid rgba(255,255,255,0.06);margin-top:8px;padding-top:8px"></div>';
         }
@@ -226,6 +231,7 @@
           '<span style="font-size:13px;font-weight:600;color:' + barColor + ';min-width:44px;text-align:right">' + pct + '%</span>' +
         '</div>' +
         '<div class="details">' +
+          '<span class="label">余量</span><span class="value">' + (d.remaining || 0).toFixed(2) + ' ' + (d.unit || '') + '</span>' +
           '<span class="label">已用</span><span class="value">' + (d.used || 0).toFixed(2) + ' ' + (d.unit || '') + '</span>' +
           '<span class="label">总量</span><span class="value">' + (d.total || 0).toFixed(2) + ' ' + (d.unit || '') + '</span>' +
         '</div>';

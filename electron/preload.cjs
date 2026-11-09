@@ -51,6 +51,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   updateChatGPTToken: (token) => ipcRenderer.invoke('update-chatgpt-token', token),
 
+  // Antigravity (agy) 用量
+  fetchAgyUsage: () => ipcRenderer.invoke('fetch-agy-usage'),
+  openAgyTooltip: (data) => ipcRenderer.invoke('open-agy-tooltip', data),
+  onAgyUpdate: (callback) => {
+    const handler = (_, data) => callback(data)
+    ipcRenderer.on('agy-update', handler)
+    return () => ipcRenderer.removeListener('agy-update', handler)
+  },
+  onOpenAgyTooltipFromTray: (callback) => {
+    const handler = (_, data) => callback(data)
+    ipcRenderer.on('open-agy-tooltip-from-tray', handler)
+    return () => ipcRenderer.removeListener('open-agy-tooltip-from-tray', handler)
+  },
+
   // 静音状态变化（从托盘菜单触发）
   onMuteChange: (callback) => {
     const handler = (_, muted) => callback(muted)
@@ -78,5 +92,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_, mode) => callback(mode)
     ipcRenderer.on('usage-mode-change', handler)
     return () => ipcRenderer.removeListener('usage-mode-change', handler)
+  },
+
+  // 双槽位用量模式（上方与下方）
+  getUsageSlots: () => ipcRenderer.invoke('get-usage-slots'),
+  setUsageSlots: (slots) => ipcRenderer.invoke('set-usage-slots', slots),
+  onUsageSlotsChange: (callback) => {
+    const handler = (_, slots) => callback(slots)
+    ipcRenderer.on('usage-slots-change', handler)
+    return () => ipcRenderer.removeListener('usage-slots-change', handler)
   },
 })

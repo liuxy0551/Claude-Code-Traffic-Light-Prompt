@@ -3,7 +3,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 type Light = "red" | "yellow" | "green";
 type Theme = "dark" | "light";
 type Style = "single" | "triple-vertical" | "triple-horizontal";
-type UsageMode = "mimo" | "chatgpt" | "none";
+type UsageMode = "mimo" | "chatgpt" | "agy" | "none";
+
+interface UsageSlots {
+  top: UsageMode;
+  bottom: UsageMode;
+}
 
 interface BalanceItem {
   isValid: boolean;
@@ -40,6 +45,37 @@ interface ChatGPTUsageData {
   secondary?: ChatGPTWindowData | null;
 }
 
+interface AgyBucketData {
+  remainingFraction: number;
+  remainingPercent: number;
+  displayPercent: string;
+  roundedPercent: number;
+  resetTime?: string | null;
+  resetInSeconds?: number;
+  resetText?: string;
+}
+
+interface AgyGroupData {
+  displayName: string;
+  description: string;
+  weekly?: AgyBucketData | null;
+  fiveHour?: AgyBucketData | null;
+}
+
+interface AgyUsageData {
+  isValid: boolean;
+  error?: string;
+  email?: string;
+  planTier?: string;
+  activeModel?: string;
+  activeGroup?: "gemini" | "3p";
+  activeFiveHour?: AgyBucketData | null;
+  activeWeekly?: AgyBucketData | null;
+  gemini?: AgyGroupData | null;
+  threeP?: AgyGroupData | null;
+  updatedAt?: number;
+}
+
 declare global {
   interface Window {
     electronAPI: {
@@ -68,8 +104,17 @@ declare global {
       onMuteChange: (cb: (muted: boolean) => void) => () => void;
       onOpenChatGPTTooltipFromTray: (cb: (data: ChatGPTUsageData) => void) => () => void;
       onOpenBalanceTooltipFromTray: (cb: (data: BalanceData) => void) => () => void;
+      // Antigravity (agy)
+      fetchAgyUsage: () => Promise<AgyUsageData>;
+      openAgyTooltip: (data: AgyUsageData) => void;
+      onAgyUpdate: (cb: (data: AgyUsageData) => void) => () => void;
+      onOpenAgyTooltipFromTray?: (cb: (data: AgyUsageData) => void) => () => void;
       getUsageMode: () => Promise<UsageMode>;
       onUsageModeChange: (cb: (mode: UsageMode) => void) => () => void;
+      // 双槽位用量模式
+      getUsageSlots?: () => Promise<UsageSlots>;
+      setUsageSlots?: (slots: UsageSlots) => Promise<{ ok: boolean }>;
+      onUsageSlotsChange?: (cb: (slots: UsageSlots) => void) => () => void;
     };
   }
 }
@@ -91,7 +136,8 @@ export default function App() {
   const [balance, setBalance]         = useState<BalanceData | null>(null);
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [chatgptUsage, setChatgptUsage] = useState<ChatGPTUsageData | null>(null);
-  const [usageMode, setUsageMode]     = useState<UsageMode>("mimo");
+  const [agyUsage, setAgyUsage]       = useState<AgyUsageData | null>(null);
+  const [usageSlots, setUsageSlots]   = useState<UsageSlots>({ top: "chatgpt", bottom: "agy" });
   const greenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audioCtxRef   = useRef<AudioContext | null>(null);
 
@@ -131,11 +177,26 @@ export default function App() {
     return () => { off1(); off2(); };
   }, []);
 
-  // 用量显示模式：启动时获取，监听变化
+  // 用量显示模式（支持双槽位同时展示）：启动时获取，监听变化
   useEffect(() => {
-    if (!window.electronAPI?.getUsageMode) return;
-    window.electronAPI.getUsageMode().then((m) => setUsageMode(m));
-    return window.electronAPI.onUsageModeChange((m) => setUsageMode(m));
+    if (window.electronAPI?.getUsageSlots) {
+      window.electronAPI.getUsageSlots().then((slots) => {
+        if (slots) setUsageSlots(slots);
+      });
+      const offSlots = window.electronAPI.onUsageSlotsChange?.((slots) => {
+        if (slots) setUsageSlots(slots);
+      });
+      return () => { offSlots?.(); };
+    }
+    if (window.electronAPI?.getUsageMode) {
+      window.electronAPI.getUsageMode().then((m) => {
+        if (m) setUsageSlots({ top: "none", bottom: m });
+      });
+      const offMode = window.electronAPI.onUsageModeChange((m) => {
+        if (m) setUsageSlots((prev) => ({ ...prev, bottom: m }));
+      });
+      return () => { offMode(); };
+    }
   }, []);
 
   // ChatGPT 用量查询：启动时获取，监听自动刷新
@@ -154,6 +215,21 @@ export default function App() {
       window.electronAPI?.openBalanceTooltip(d);
     });
     return () => { off1(); off2(); off3(); };
+  }, []);
+
+  // Antigravity (agy) 用量查询：启动时获取，监听自动刷新
+  useEffect(() => {
+    if (!window.electronAPI?.fetchAgyUsage) return;
+    window.electronAPI.fetchAgyUsage().then((d) => setAgyUsage(d));
+    const off1 = window.electronAPI.onAgyUpdate((d) => setAgyUsage(d));
+    const off2 = window.electronAPI.onOpenAgyTooltipFromTray?.((d) => {
+      setAgyUsage(d);
+      window.electronAPI?.openAgyTooltip(d);
+    });
+    return () => {
+      off1();
+      off2?.();
+    };
   }, []);
 
   // 监听托盘菜单的静音切换
@@ -274,6 +350,193 @@ export default function App() {
         border: "1px solid rgba(0,0,0,0.08)",
       };
 
+  // 上方是否有用量显示（用于自适应调整外壳上下内边距）
+  const hasTopUsage = Boolean(usageSlots.top && usageSlots.top !== "none");
+  const containerPadding = style === "single"
+    ? (hasTopUsage ? "22px 0 16px" : "16px 0 16px")
+    : style === "triple-horizontal"
+      ? (hasTopUsage ? "22px 14px 22px" : "16px 14px 20px")
+      : (hasTopUsage ? "22px 0 22px" : "16px 0 20px");
+
+  // 渲染指定槽位（上方 top 或下方 bottom）的用量角标
+  const renderUsageSlot = (slot: "top" | "bottom") => {
+    const mode = usageSlots[slot];
+    if (!mode || mode === "none") return null;
+
+    const isTop = slot === "top";
+    const posStyle = (side: "left" | "right") => ({
+      position: "absolute" as const,
+      [isTop ? "top" : "bottom"]: 2,
+      [side]: 4,
+      minWidth: 28,
+      height: 20,
+      borderRadius: 8,
+      border: "none",
+      padding: "0 3px",
+      fontSize: 10,
+      fontWeight: 600,
+      cursor: "pointer",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      WebkitAppRegion: "no-drag" as const,
+      fontVariantNumeric: "tabular-nums" as const,
+    });
+
+    if (mode === "mimo") {
+      if (!balanceVisible) return null;
+      // 统一转为余量百分比展示
+      const balancePercent = (() => {
+        if (!balance) return null;
+        const target = balance.items?.length ? balance.items[0] : balance;
+        if (!target || !target.isValid) return null;
+        if (typeof target.remaining === "number" && typeof target.total === "number" && target.total > 0) {
+          return Math.round((target.remaining / target.total) * 100);
+        }
+        if (target.extra) {
+          const usedPct = parseFloat(target.extra);
+          return isNaN(usedPct) ? null : Math.max(0, Math.min(100, Math.round(100 - usedPct)));
+        }
+        return null;
+      })();
+
+      // 余量配色统一：充足(>50%)绿，适中(>=20%)橙，紧张(<20%)红
+      const color = balancePercent === null
+        ? (dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)")
+        : balancePercent > 50
+          ? "#30D158"
+          : balancePercent >= 20
+            ? "#FF9F0A"
+            : "#FF3B30";
+
+      const bg = balancePercent === null
+        ? "rgba(255,255,255,0.08)"
+        : balancePercent > 50
+          ? "rgba(48,209,88,0.15)"
+          : balancePercent >= 20
+            ? "rgba(255,159,10,0.15)"
+            : "rgba(255,59,48,0.15)";
+
+      return (
+        <button
+          key={`${slot}-mimo`}
+          className="no-drag"
+          onClick={() => window.electronAPI?.openBalanceTooltip(balance || {})}
+          style={{
+            ...posStyle("left"),
+            background: bg,
+            color,
+          }}
+        >
+          {balancePercent !== null ? balancePercent + "%" : "0%"}
+        </button>
+      );
+    }
+
+    if (mode === "chatgpt") {
+      const p = chatgptUsage?.primary;
+      const isPrimaryWeekly = p && p.windowSeconds >= 86400;
+      // 统一计算为余量百分比（100 - usedPercent）
+      const primaryRemaining = chatgptUsage?.isValid && p ? Math.max(0, Math.min(100, 100 - p.usedPercent)) : 0;
+
+      const weekly = chatgptUsage?.secondary
+        || (chatgptUsage?.primary && chatgptUsage.primary.windowSeconds >= 86400 ? chatgptUsage.primary : null);
+      // 统一计算为余量百分比（100 - usedPercent）
+      const weeklyRemaining = chatgptUsage?.isValid && weekly ? Math.max(0, Math.min(100, 100 - weekly.usedPercent)) : 0;
+
+      // 余量配色统一：充足(>50%)绿，适中(>=20%)橙，紧张(<20%)红
+      const getCodexColor = (pct: number) => {
+        if (!chatgptUsage?.isValid) return dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)";
+        return pct > 50 ? "#30D158" : pct >= 20 ? "#FF9F0A" : "#FF3B30";
+      };
+
+      const getCodexBg = (pct: number) => {
+        if (!chatgptUsage?.isValid) return "rgba(255,255,255,0.08)";
+        return pct > 50 ? "rgba(48,209,88,0.15)" : pct >= 20 ? "rgba(255,159,10,0.15)" : "rgba(255,59,48,0.15)";
+      };
+
+      return (
+        <div key={`${slot}-chatgpt-group`}>
+          {!isPrimaryWeekly && (
+            <button
+              key={`${slot}-chatgpt-primary`}
+              className="no-drag"
+              onClick={() => window.electronAPI?.openChatGPTTooltip(chatgptUsage || { isValid: false, error: "未查询" })}
+              style={{
+                ...posStyle("left"),
+                background: getCodexBg(primaryRemaining),
+                color: getCodexColor(primaryRemaining),
+              }}
+            >
+              {primaryRemaining}%
+            </button>
+          )}
+          <button
+            key={`${slot}-chatgpt-weekly`}
+            className="no-drag"
+            onClick={() => window.electronAPI?.openChatGPTTooltip(chatgptUsage || { isValid: false, error: "未查询" })}
+            style={{
+              ...posStyle("right"),
+              background: getCodexBg(weeklyRemaining),
+              color: getCodexColor(weeklyRemaining),
+            }}
+          >
+            {weeklyRemaining}%
+          </button>
+        </div>
+      );
+    }
+
+    if (mode === "agy") {
+      const fiveHour = agyUsage?.activeFiveHour;
+      const fivePct = agyUsage?.isValid && fiveHour ? fiveHour.roundedPercent : 0;
+
+      const weekly = agyUsage?.activeWeekly;
+      const weeklyPct = agyUsage?.isValid && weekly ? weekly.roundedPercent : 0;
+
+      const getAgyColor = (pct: number) => {
+        if (!agyUsage?.isValid) return dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)";
+        return pct > 50 ? "#30D158" : pct >= 20 ? "#FF9F0A" : "#FF3B30";
+      };
+
+      const getAgyBg = (pct: number) => {
+        if (!agyUsage?.isValid) return "rgba(255,255,255,0.08)";
+        return pct > 50 ? "rgba(48,209,88,0.15)" : pct >= 20 ? "rgba(255,159,10,0.15)" : "rgba(255,59,48,0.15)";
+      };
+
+      return (
+        <div key={`${slot}-agy-group`}>
+          <button
+            key={`${slot}-agy-5h`}
+            className="no-drag"
+            onClick={() => window.electronAPI?.openAgyTooltip(agyUsage || { isValid: false, error: "未获取到数据" })}
+            style={{
+              ...posStyle("left"),
+              background: getAgyBg(fivePct),
+              color: getAgyColor(fivePct),
+            }}
+          >
+            {agyUsage?.isValid && fiveHour ? `${fivePct}%` : "0%"}
+          </button>
+          <button
+            key={`${slot}-agy-weekly`}
+            className="no-drag"
+            onClick={() => window.electronAPI?.openAgyTooltip(agyUsage || { isValid: false, error: "未获取到数据" })}
+            style={{
+              ...posStyle("right"),
+              background: getAgyBg(weeklyPct),
+              color: getAgyColor(weeklyPct),
+            }}
+          >
+            {agyUsage?.isValid && weekly ? `${weeklyPct}%` : "0%"}
+          </button>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <div
       className="size-full flex flex-col items-center justify-start pt-3"
@@ -307,7 +570,7 @@ export default function App() {
       {/* 外壳容器：可拖拽，灯泡单独设为 no-drag */}
       <div
         className="relative flex flex-col items-center"
-        style={{ ...housing, borderRadius: 20, width: style === "triple-horizontal" ? 200 : 80, padding: style === "single" ? "16px 0 16px" : "16px 0 20px", WebkitAppRegion: "drag" } as React.CSSProperties}
+        style={{ ...housing, borderRadius: 20, width: style === "triple-horizontal" ? 200 : 80, padding: containerPadding, WebkitAppRegion: "drag" } as React.CSSProperties}
       >
         {style === "single" ? (
           /* 单灯模式：一个灯显示当前状态颜色 */
@@ -458,121 +721,11 @@ export default function App() {
         </div>
         )}
 
-        {/* MiMo 用量：左下角 */}
-        {usageMode === "mimo" && balanceVisible && (() => {
-          const balancePercent = (() => {
-            if (!balance) return null;
-            if (balance.items?.length) {
-              const first = balance.items[0];
-              return first.isValid && first.extra ? Math.round(parseFloat(first.extra)) : null;
-            }
-            return balance.isValid && balance.extra ? Math.round(parseFloat(balance.extra)) : null;
-          })();
-          return (
-            <button
-              className="no-drag"
-              onClick={() => window.electronAPI?.openBalanceTooltip(balance || {})}
-              style={{
-                position: "absolute", bottom: 2, left: 4,
-                minWidth: 28, height: 20, borderRadius: 8, border: "none",
-                padding: "0 3px",
-                background: balancePercent === null
-                  ? "rgba(255,255,255,0.08)"
-                  : balancePercent < 75
-                    ? "rgba(48,209,88,0.15)"
-                    : balancePercent < 90
-                      ? "rgba(255,159,10,0.15)"
-                      : "rgba(255,59,48,0.15)",
-                color: balancePercent === null
-                  ? dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"
-                  : balancePercent < 75
-                    ? "#30D158"
-                    : balancePercent < 90
-                      ? "#FF9F0A"
-                      : "#FF3B30",
-                fontSize: 10, fontWeight: 600, cursor: "pointer", display: "flex",
-                alignItems: "center", justifyContent: "center",
-                WebkitAppRegion: "no-drag",
-                fontVariantNumeric: "tabular-nums",
-              } as React.CSSProperties}
-            >
-              {balancePercent !== null ? balancePercent + "%" : "0%"}
-            </button>
-          );
-        })()}
+        {/* 上方角标用量展示 */}
+        {renderUsageSlot("top")}
 
-        {/* Codex 用量：当 primary 不是周窗口时在左下角显示 */}
-        {usageMode === "chatgpt" && (() => {
-          const p = chatgptUsage?.primary;
-          const isPrimaryWeekly = p && p.windowSeconds >= 86400;
-          if (isPrimaryWeekly) return null; // primary 就是周窗口，不在左下角重复显示
-          const pct = chatgptUsage?.isValid && p ? p.usedPercent : 0;
-          return (
-            <button
-              className="no-drag"
-              onClick={() => window.electronAPI?.openChatGPTTooltip(chatgptUsage || { isValid: false, error: '未查询' })}
-              style={{
-                position: "absolute", bottom: 2, left: 4,
-                minWidth: 28, height: 20, borderRadius: 8, border: "none",
-                padding: "0 3px",
-                background: pct < 75
-                  ? "rgba(48,209,88,0.15)"
-                  : pct < 90
-                    ? "rgba(255,159,10,0.15)"
-                    : "rgba(255,59,48,0.15)",
-                color: !chatgptUsage?.isValid
-                  ? dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"
-                  : pct < 75
-                    ? "#30D158"
-                    : pct < 90
-                      ? "#FF9F0A"
-                      : "#FF3B30",
-                fontSize: 10, fontWeight: 600, cursor: "pointer", display: "flex",
-                alignItems: "center", justifyContent: "center",
-                WebkitAppRegion: "no-drag",
-                fontVariantNumeric: "tabular-nums",
-              } as React.CSSProperties}
-            >
-              {pct}%
-            </button>
-          );
-        })()}
-
-        {/* Codex 周用量：右下角，兼容 secondary 或 primary 为周窗口的情况 */}
-        {usageMode === "chatgpt" && (() => {
-          const weekly = chatgptUsage?.secondary
-            || (chatgptUsage?.primary && chatgptUsage.primary.windowSeconds >= 86400 ? chatgptUsage.primary : null);
-          const pct = chatgptUsage?.isValid && weekly ? weekly.usedPercent : 0;
-          return (
-            <button
-              className="no-drag"
-              onClick={() => window.electronAPI?.openChatGPTTooltip(chatgptUsage || { isValid: false, error: '未查询' })}
-              style={{
-                position: "absolute", bottom: 2, right: 4,
-                minWidth: 28, height: 20, borderRadius: 8, border: "none",
-                padding: "0 3px",
-                background: pct < 75
-                  ? "rgba(48,209,88,0.15)"
-                  : pct < 90
-                    ? "rgba(255,159,10,0.15)"
-                    : "rgba(255,59,48,0.15)",
-                color: !chatgptUsage?.isValid
-                  ? dark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.3)"
-                  : pct < 75
-                    ? "#30D158"
-                    : pct < 90
-                      ? "#FF9F0A"
-                      : "#FF3B30",
-                fontSize: 10, fontWeight: 600, cursor: "pointer", display: "flex",
-                alignItems: "center", justifyContent: "center",
-                WebkitAppRegion: "no-drag",
-                fontVariantNumeric: "tabular-nums",
-              } as React.CSSProperties}
-            >
-              {pct}%
-            </button>
-          );
-        })()}
+        {/* 下方角标用量展示 */}
+        {renderUsageSlot("bottom")}
       </div>
     </div>
   );

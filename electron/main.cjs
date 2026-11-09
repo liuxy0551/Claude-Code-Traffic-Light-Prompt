@@ -15,7 +15,9 @@ const MUTE_FILE    = path.join(TL_DIR, 'cc_traffic_light_mute')
 const STYLE_FILE   = path.join(TL_DIR, 'cc_traffic_light_style')
 const COOKIE_FILE  = path.join(TL_DIR, 'cc_traffic_light_cookie')
 const CHATGPT_TOKEN_FILE = path.join(TL_DIR, 'cc_traffic_light_chatgpt_token')
-const USAGE_MODE_FILE = path.join(TL_DIR, 'cc_traffic_light_usage_mode') // 'mimo' | 'chatgpt' | 'none'
+const AGY_STATUS_FILE    = path.join(TL_DIR, 'cc_traffic_light_agy_status.json')
+const USAGE_MODE_FILE = path.join(TL_DIR, 'cc_traffic_light_usage_mode') // 'mimo' | 'chatgpt' | 'agy' | 'none'
+const USAGE_SLOTS_FILE   = path.join(TL_DIR, 'cc_traffic_light_usage_slots.json')
 const POLL_INTERVAL_FILE = path.join(TL_DIR, 'cc_traffic_light_poll_interval') // 分钟数
 const STATS_FILE   = path.join(TL_DIR, 'cc_traffic_light_stats.json')
 const distPath     = path.join(__dirname, '../dist/index.html')
@@ -102,8 +104,8 @@ const DEFAULT_BALANCE_CONFIG = {
       { name: "compensation_total_token", planName: "补偿" },
     ];
     const formatPercent = (used, total, fallbackPercent) => {
-      const percent = total > 0 ? used / total : Number(fallbackPercent || 0);
-      return (percent * 100).toFixed(2).replace(/\\.?0+$/, "") + "%";
+      const remainingRatio = total > 0 ? (total - used) / total : (1 - Number(fallbackPercent || 0));
+      return (Math.max(0, Math.min(1, remainingRatio)) * 100).toFixed(2).replace(/\\.?0+$/, "") + "%";
     };
     const formatValue = (value) => (value / SCALE) / 100;
     return planConfigs.map(({ name, planName }) => {
@@ -128,10 +130,56 @@ function readSavedCookie() {
   } catch { return '' }
 }
 
-function readUsageMode() {
+function readUsageSlots() {
   try {
-    return fs.existsSync(USAGE_MODE_FILE) ? fs.readFileSync(USAGE_MODE_FILE, 'utf-8').trim() : 'MiMo'
-  } catch { return 'MiMo' }
+    if (fs.existsSync(USAGE_SLOTS_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(USAGE_SLOTS_FILE, 'utf-8'))
+      const valid = ['mimo', 'chatgpt', 'agy', 'none']
+      const top = valid.includes(parsed.top) ? parsed.top : 'chatgpt'
+      const bottom = valid.includes(parsed.bottom) ? parsed.bottom : 'agy'
+      return { top, bottom }
+    }
+  } catch {}
+
+  // 默认上方 Codex，下方 Antigravity，实现双用量同时展示
+  const oldMode = (function() {
+    try {
+      return fs.existsSync(USAGE_MODE_FILE) ? fs.readFileSync(USAGE_MODE_FILE, 'utf-8').trim() : 'agy'
+    } catch { return 'agy' }
+  })()
+
+  if (oldMode === 'agy') {
+    return { top: 'chatgpt', bottom: 'agy' }
+  } else if (oldMode === 'chatgpt') {
+    return { top: 'agy', bottom: 'chatgpt' }
+  } else if (oldMode === 'mimo') {
+    return { top: 'none', bottom: 'mimo' }
+  } else if (oldMode === 'none') {
+    return { top: 'none', bottom: 'none' }
+  }
+  return { top: 'chatgpt', bottom: 'agy' }
+}
+
+function saveUsageSlots(slots) {
+  try {
+    fs.writeFileSync(USAGE_SLOTS_FILE, JSON.stringify(slots, null, 2))
+    const legacy = slots.bottom !== 'none' ? slots.bottom : slots.top
+    fs.writeFileSync(USAGE_MODE_FILE, legacy)
+  } catch {}
+}
+
+function notifySlotsChange(slots) {
+  closeAllTooltips()
+  if (mainWin && !mainWin.isDestroyed()) {
+    mainWin.webContents.send('usage-slots-change', slots)
+    const legacy = slots.bottom !== 'none' ? slots.bottom : slots.top
+    mainWin.webContents.send('usage-mode-change', legacy)
+  }
+}
+
+function readUsageMode() {
+  const slots = readUsageSlots()
+  return slots.bottom !== 'none' ? slots.bottom : slots.top
 }
 
 function readPollInterval() {
@@ -350,6 +398,188 @@ function fetchChatGPTUsage(retryCount = 0) {
       resolve({ isValid: false, error: e.message })
     }
   })
+}
+
+// ─── Antigravity (agy) 用量查询 ──────────────────────────────────
+let lastAgyRefreshTime = Date.now()
+let agyTooltipWin = null
+let agyWatcher = null
+
+function parseAgyBucket(bucket) {
+  if (!bucket) return null
+  const remainingFraction = typeof bucket.remaining_fraction === 'number'
+    ? bucket.remaining_fraction
+    : (typeof bucket.remaining_percentage === 'number' ? bucket.remaining_percentage / 100 : 1)
+  const remainingPercent = Math.max(0, Math.min(100, remainingFraction * 100))
+
+  let resetInSeconds = bucket.reset_in_seconds || 0
+  if (bucket.reset_time) {
+    const diff = Math.floor((new Date(bucket.reset_time).getTime() - Date.now()) / 1000)
+    if (!isNaN(diff)) {
+      resetInSeconds = Math.max(0, diff)
+    }
+  }
+
+  let resetText = ''
+  if (resetInSeconds > 0) {
+    const days = Math.floor(resetInSeconds / 86400)
+    const hours = Math.floor((resetInSeconds % 86400) / 3600)
+    const mins = Math.floor((resetInSeconds % 3600) / 60)
+    if (days > 0) {
+      resetText = `${days}d ${hours}h ${mins}m`
+    } else if (hours > 0) {
+      resetText = `${hours}h ${mins}m`
+    } else {
+      resetText = `${mins}m`
+    }
+  } else if (remainingPercent >= 99.9) {
+    resetText = '额度充足'
+  } else {
+    resetText = '即将重置'
+  }
+
+  return {
+    remainingFraction,
+    remainingPercent: Number(remainingPercent.toFixed(2)),
+    displayPercent: (remainingPercent % 1 === 0 ? remainingPercent.toFixed(0) : remainingPercent.toFixed(2)) + '%',
+    roundedPercent: Math.round(remainingPercent),
+    resetTime: bucket.reset_time || null,
+    resetInSeconds,
+    resetText,
+  }
+}
+
+function getAgySettingsPath() {
+  const dir = process.env.ANTIGRAVITY_APP_DATA_DIR || path.join(os.homedir(), '.gemini', 'antigravity-cli')
+  return path.join(dir, 'settings.json')
+}
+
+function getAgyStatusLineScriptPath() {
+  const settingsPath = getAgySettingsPath()
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const s = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+      if (s.statusLine?.command) return s.statusLine.command
+    }
+  } catch {}
+  return path.join(path.dirname(settingsPath), 'status-line.sh')
+}
+
+function readAgyUsage() {
+  try {
+    let raw = null
+    let mtime = 0
+    if (fs.existsSync(AGY_STATUS_FILE)) {
+      raw = JSON.parse(fs.readFileSync(AGY_STATUS_FILE, 'utf-8'))
+      mtime = fs.statSync(AGY_STATUS_FILE).mtimeMs
+    }
+
+    let activeModel = raw?.model?.display_name || raw?.model?.id || ''
+    if (!activeModel) {
+      const settingsPath = getAgySettingsPath()
+      if (fs.existsSync(settingsPath)) {
+        try {
+          const s = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'))
+          if (s.model) activeModel = s.model
+        } catch {}
+      }
+    }
+    if (!activeModel) activeModel = 'Gemini 3.8 Flash (Medium)'
+
+    const is3P = /claude|gpt|o1|o3|deepseek|3p/i.test(activeModel)
+    const activeGroup = is3P ? '3p' : 'gemini'
+
+    if (!raw || !raw.quota) {
+      return {
+        isValid: false,
+        error: '未检测到 Antigravity 配额数据，请确保已启动并运行 agy',
+        activeModel,
+        activeGroup,
+      }
+    }
+
+    const quota = raw.quota || {}
+    const geminiWeekly = parseAgyBucket(quota['gemini-weekly'])
+    const geminiFiveHour = parseAgyBucket(quota['gemini-5h'])
+    const threePWeekly = parseAgyBucket(quota['3p-weekly'])
+    const threePFiveHour = parseAgyBucket(quota['3p-5h'])
+
+    const activeFiveHour = activeGroup === '3p' ? threePFiveHour : geminiFiveHour
+    const activeWeekly = activeGroup === '3p' ? threePWeekly : geminiWeekly
+
+    return {
+      isValid: true,
+      email: raw.email || '',
+      planTier: raw.plan_tier || '',
+      activeModel,
+      activeGroup,
+      activeFiveHour,
+      activeWeekly,
+      gemini: {
+        displayName: 'Gemini Models',
+        description: 'Gemini Flash, Gemini Pro',
+        weekly: geminiWeekly,
+        fiveHour: geminiFiveHour,
+      },
+      threeP: {
+        displayName: 'Claude and GPT models',
+        description: 'Claude Opus, Claude Sonnet, GPT-OSS',
+        weekly: threePWeekly,
+        fiveHour: threePFiveHour,
+      },
+      updatedAt: mtime || Date.now(),
+    }
+  } catch (e) {
+    return {
+      isValid: false,
+      error: '解析 Antigravity 状态失败: ' + e.message,
+    }
+  }
+}
+
+function setupAgyStatusLineIntegration() {
+  try {
+    const scriptPath = getAgyStatusLineScriptPath()
+    const scriptDir = path.dirname(scriptPath)
+    if (!fs.existsSync(scriptDir)) return
+
+    const isWin = process.platform === 'win32'
+    const syncCmd = isWin
+      ? `if exist "%USERPROFILE%\\.agents\\cc_traffic_light" echo %input% > "%USERPROFILE%\\.agents\\cc_traffic_light\\cc_traffic_light_agy_status.json"`
+      : `AGY_STATUS_DIR="\${HOME}/.agents/cc_traffic_light"\nif [ -d "$AGY_STATUS_DIR" ]; then\n  echo "$input" > "\${AGY_STATUS_DIR}/cc_traffic_light_agy_status.json"\nfi`
+
+    if (fs.existsSync(scriptPath)) {
+      let content = fs.readFileSync(scriptPath, 'utf-8')
+      if (!content.includes('cc_traffic_light_agy_status.json')) {
+        if (content.includes('input=$(cat)')) {
+          content = content.replace('input=$(cat)', `input=$(cat)\n\n# 同步状态到 Agent 红绿灯\n${syncCmd}\n`)
+        } else {
+          content = `#!/bin/bash\ninput=$(cat)\n\n# 同步状态到 Agent 红绿灯\n${syncCmd}\n\n` + content
+        }
+        fs.writeFileSync(scriptPath, content, 'utf-8')
+        try { fs.chmodSync(scriptPath, '755') } catch {}
+      }
+    }
+  } catch (e) {
+    console.error('setupAgyStatusLineIntegration error:', e)
+  }
+}
+
+function watchAgyStatusFile() {
+  if (agyWatcher) return
+  try {
+    if (fs.existsSync(AGY_STATUS_FILE)) {
+      agyWatcher = fs.watch(AGY_STATUS_FILE, () => {
+        const data = readAgyUsage()
+        if (mainWin && !mainWin.isDestroyed()) {
+          mainWin.webContents.send('agy-update', data)
+        }
+        if (agyTooltipWin && !agyTooltipWin.isDestroyed()) {
+          agyTooltipWin.webContents.send('agy-update', data)
+        }
+      })
+    }
+  } catch {}
 }
 
 function getClaudeSettingsPath() {
@@ -644,54 +874,95 @@ function closeAllTooltips() {
     chatgptTooltipWin.close()
     chatgptTooltipWin = null
   }
+  if (agyTooltipWin && !agyTooltipWin.isDestroyed()) {
+    agyTooltipWin.close()
+    agyTooltipWin = null
+  }
 }
 
 function buildTrayMenu(currentTheme, currentStyle) {
   const isSingle = currentStyle === 'single'
   const isMuted = readMute()
-  const usageMode = readUsageMode()
+  const slots = readUsageSlots()
   const pollInterval = readPollInterval()
+
+  const updateSlot = (pos, mode) => {
+    const next = { ...slots, [pos]: mode }
+    saveUsageSlots(next)
+    notifySlotsChange(next)
+    tray.setContextMenu(buildTrayMenu(currentTheme, currentStyle))
+  }
+
   return Menu.buildFromTemplate([
-    // 用量查询
+    // 余量查询
     {
-      label: '📊 用量查询',
+      label: '📊 余量查询',
       submenu: [
         {
-          label: '显示 MiMo 用量',
-          type: 'radio',
-          checked: usageMode === 'mimo',
-          click: () => {
-            try { fs.writeFileSync(USAGE_MODE_FILE, 'mimo') } catch {}
-            closeAllTooltips()
-            if (mainWin && !mainWin.isDestroyed()) {
-              mainWin.webContents.send('usage-mode-change', 'mimo')
-            }
-            tray.setContextMenu(buildTrayMenu(currentTheme, currentStyle))
-          }
+          label: '上方余量 (顶部角标)',
+          submenu: [
+            {
+              label: '显示 Codex 余量',
+              type: 'radio',
+              checked: slots.top === 'chatgpt',
+              click: () => updateSlot('top', 'chatgpt')
+            },
+            {
+              label: '显示 Antigravity 余量',
+              type: 'radio',
+              checked: slots.top === 'agy',
+              click: () => updateSlot('top', 'agy')
+            },
+            {
+              label: '显示 MiMo 余量',
+              type: 'radio',
+              checked: slots.top === 'mimo',
+              click: () => updateSlot('top', 'mimo')
+            },
+            {
+              label: '隐藏上方余量',
+              type: 'radio',
+              checked: slots.top === 'none',
+              click: () => updateSlot('top', 'none')
+            },
+          ]
         },
         {
-          label: '显示 Codex 用量',
-          type: 'radio',
-          checked: usageMode === 'chatgpt',
-          click: () => {
-            try { fs.writeFileSync(USAGE_MODE_FILE, 'chatgpt') } catch {}
-            closeAllTooltips()
-            if (mainWin && !mainWin.isDestroyed()) {
-              mainWin.webContents.send('usage-mode-change', 'chatgpt')
-            }
-            tray.setContextMenu(buildTrayMenu(currentTheme, currentStyle))
-          }
+          label: '下方余量 (底部角标)',
+          submenu: [
+            {
+              label: '显示 Codex 余量',
+              type: 'radio',
+              checked: slots.bottom === 'chatgpt',
+              click: () => updateSlot('bottom', 'chatgpt')
+            },
+            {
+              label: '显示 Antigravity 余量',
+              type: 'radio',
+              checked: slots.bottom === 'agy',
+              click: () => updateSlot('bottom', 'agy')
+            },
+            {
+              label: '显示 MiMo 余量',
+              type: 'radio',
+              checked: slots.bottom === 'mimo',
+              click: () => updateSlot('bottom', 'mimo')
+            },
+            {
+              label: '隐藏下方余量',
+              type: 'radio',
+              checked: slots.bottom === 'none',
+              click: () => updateSlot('bottom', 'none')
+            },
+          ]
         },
+        { type: 'separator' },
         {
-          label: '隐藏用量',
-          type: 'radio',
-          checked: usageMode === 'none',
+          label: '隐藏所有余量',
           click: () => {
-            try { fs.writeFileSync(USAGE_MODE_FILE, 'none') } catch {}
-            closeAllTooltips()
-            if (mainWin && !mainWin.isDestroyed()) {
-              mainWin.webContents.send('usage-mode-change', 'none')
-            }
+            const next = { top: 'none', bottom: 'none' }
+            saveUsageSlots(next)
+            notifySlotsChange(next)
             tray.setContextMenu(buildTrayMenu(currentTheme, currentStyle))
           }
         },
@@ -1059,6 +1330,13 @@ ipcMain.handle('update-balance-cookie', async (_, cookie) => {
 
 // ─── 用量显示模式 IPC ──────────────────────────────────────────────
 ipcMain.handle('get-usage-mode', () => readUsageMode())
+ipcMain.handle('get-usage-slots', () => readUsageSlots())
+ipcMain.handle('set-usage-slots', (_, slots) => {
+  saveUsageSlots(slots)
+  notifySlotsChange(slots)
+  if (tray) tray.setContextMenu(buildTrayMenu(readTheme(), readStyle()))
+  return { ok: true }
+})
 
 // ─── ChatGPT IPC Handlers ─────────────────────────────────────────
 ipcMain.handle('fetch-chatgpt-usage', async () => {
@@ -1162,6 +1440,85 @@ ipcMain.handle('refresh-chatgpt-tooltip', async () => {
 ipcMain.on('resize-chatgpt-tooltip', (_, height) => {
   if (chatgptTooltipWin && !chatgptTooltipWin.isDestroyed()) {
     chatgptTooltipWin.setSize(280, height)
+  }
+})
+
+// ─── Antigravity (agy) IPC Handlers ────────────────────────────────
+ipcMain.handle('fetch-agy-usage', async () => {
+  return readAgyUsage()
+})
+
+ipcMain.handle('open-agy-tooltip', async (_, data) => {
+  // Toggle: 如果已打开则关闭
+  if (agyTooltipWin && !agyTooltipWin.isDestroyed()) {
+    agyTooltipWin.close()
+    agyTooltipWin = null
+    return
+  }
+
+  const { BrowserWindow: BW } = require('electron')
+  const mainBounds = mainWin.getBounds()
+  const { width: sw } = screen.getPrimaryDisplay().workAreaSize
+
+  const tooltipW = 310
+  let x = mainBounds.x + mainBounds.width + 4
+  let y = mainBounds.y
+  if (x + tooltipW > sw) x = mainBounds.x - tooltipW - 4
+
+  agyTooltipWin = new BW({
+    width: tooltipW, height: 260,
+    x, y,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: true,
+    type: 'toolbar',
+    webPreferences: {
+      preload: path.join(__dirname, 'tooltip-preload.cjs'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+
+  const agyTooltipPath = isDev
+    ? path.join(__dirname, '../public/agy-tooltip.html')
+    : path.join(__dirname, '../dist/agy-tooltip.html')
+  agyTooltipWin.loadFile(agyTooltipPath)
+
+  agyTooltipWin.webContents.on('did-finish-load', () => {
+    if (!agyTooltipWin || agyTooltipWin.isDestroyed()) return
+    const currentData = data || readAgyUsage()
+    const encoded = encodeURIComponent(JSON.stringify(currentData))
+    agyTooltipWin.webContents.executeJavaScript(
+      `window.__agyData = JSON.parse(decodeURIComponent("${encoded}"));
+       if (typeof renderUsage === 'function') renderUsage(window.__agyData);`
+    )
+  })
+
+  agyTooltipWin.on('blur', () => {
+    if (agyTooltipWin && !agyTooltipWin.isDestroyed()) {
+      agyTooltipWin.close()
+      agyTooltipWin = null
+    }
+  })
+})
+
+ipcMain.handle('refresh-agy-tooltip', async () => {
+  const data = readAgyUsage()
+  lastAgyRefreshTime = Date.now()
+  if (mainWin && !mainWin.isDestroyed()) {
+    mainWin.webContents.send('agy-update', data)
+  }
+  return data
+})
+
+ipcMain.handle('get-last-agy-refresh-time', () => lastAgyRefreshTime)
+
+ipcMain.on('resize-agy-tooltip', (_, height) => {
+  if (agyTooltipWin && !agyTooltipWin.isDestroyed()) {
+    agyTooltipWin.setSize(310, height)
   }
 })
 
@@ -1289,6 +1646,7 @@ function createWindow() {
   // 自动刷新余量和用量
   let balanceTimer = null
   let chatgptTimer = null
+  let agyTimer = null
 
   const fetchAndNotifyBalance = async () => {
     const data = await fetchBalanceData()
@@ -1306,12 +1664,25 @@ function createWindow() {
     }
   }
 
+  const fetchAndNotifyAgy = async () => {
+    const data = readAgyUsage()
+    lastAgyRefreshTime = Date.now()
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.webContents.send('agy-update', data)
+    }
+    if (agyTooltipWin && !agyTooltipWin.isDestroyed()) {
+      agyTooltipWin.webContents.send('agy-update', data)
+    }
+  }
+
   function restartPollTimers() {
     if (balanceTimer) clearInterval(balanceTimer)
     if (chatgptTimer) clearInterval(chatgptTimer)
+    if (agyTimer) clearInterval(agyTimer)
     const interval = readPollInterval() * 60000
     balanceTimer = setInterval(fetchAndNotifyBalance, interval)
     chatgptTimer = setInterval(fetchAndNotifyChatGPT, interval)
+    agyTimer = setInterval(fetchAndNotifyAgy, interval)
   }
 
   // 初始启动定时器
@@ -1323,7 +1694,14 @@ function createWindow() {
     tray.setContextMenu(buildTrayMenu(readTheme(), readStyle()))
   })
 
-  mainWin.on('closed', () => { clearInterval(balanceTimer); clearInterval(chatgptTimer) })
+  // 监听 agy 状态文件变动
+  watchAgyStatusFile()
+
+  mainWin.on('closed', () => {
+    clearInterval(balanceTimer)
+    clearInterval(chatgptTimer)
+    clearInterval(agyTimer)
+  })
 }
 
 app.whenReady().then(() => {
@@ -1336,6 +1714,8 @@ app.whenReady().then(() => {
   }
 
   setupAllHooks()
+  setupCodexHooks()
+  setupAgyStatusLineIntegration()
 
   try { fs.writeFileSync(PID_FILE, process.pid.toString()) } catch {}
 
