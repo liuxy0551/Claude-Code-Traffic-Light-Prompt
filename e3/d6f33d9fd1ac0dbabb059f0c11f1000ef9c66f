@@ -1,0 +1,18 @@
+electron/main.cjs
+  h_0c940a947252a6 1221-1258,1269,1272-1275,1335-1342,1410,1421-1422,1425-1429,1444-1454,1480-1487,1501-1516,1525-1526,1536-1539,1542-1546,1561-1571,1593-1600,1616-1631
+public/agy-tooltip.html
+  h_0c940a947252a6 14-25,228-232,234-248,309,317
+public/chatgpt-tooltip.html
+  h_0c940a947252a6 187-191,193-202,204-207
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e3d6f33d9fd1ac0dbabb059f0c11f1000ef9c66f",
+  "prompts": {},
+  "humans": {
+    "h_0c940a947252a6": {
+      "author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
