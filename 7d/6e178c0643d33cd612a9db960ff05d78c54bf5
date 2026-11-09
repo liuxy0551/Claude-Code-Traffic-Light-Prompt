@@ -1,0 +1,16 @@
+src/app/App.tsx
+  h_0c940a947252a6 375
+src/styles/globals.css
+  h_0c940a947252a6 9-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7d6e178c0643d33cd612a9db960ff05d78c54bf5",
+  "prompts": {},
+  "humans": {
+    "h_0c940a947252a6": {
+      "author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
