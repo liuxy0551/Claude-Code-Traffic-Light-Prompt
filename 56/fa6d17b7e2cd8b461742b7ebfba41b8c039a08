@@ -1,0 +1,28 @@
+README.md
+  h_0c940a947252a6 4,13,20,31,33-35,40,42-44
+electron/main.cjs
+  h_0c940a947252a6 18-20,107-108,133-163,165-182,403-584,877-880,886,888-895,897,899,902-928,931-957,959,961,963-965,1333-1339,1446-1524,1649,1667-1677,1681,1685,1697-1704,1717-1718
+electron/preload.cjs
+  h_0c940a947252a6 54-67,96-104
+electron/tooltip-preload.cjs
+  h_0c940a947252a6 3,15-19
+public/agy-tooltip.html
+  h_0c940a947252a6 1-394
+public/balance-tooltip.html
+  h_0c940a947252a6 5,190,209,215-220,222,234
+public/chatgpt-tooltip.html
+  h_0c940a947252a6 5,249-251,268,270,282,298
+src/app/App.tsx
+  h_0c940a947252a6 6-11,48-78,107-111,114-117,139-140,180,182-199,220-234,353-539,573,724-728
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56fa6d17b7e2cd8b461742b7ebfba41b8c039a08",
+  "prompts": {},
+  "humans": {
+    "h_0c940a947252a6": {
+      "author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
