@@ -1218,6 +1218,44 @@ ipcMain.handle('fetch-balance', async () => {
   return await fetchBalanceData()
 })
 
+// 计算各模型浮窗尺寸与显示位置，防止靠近屏幕边缘（尤其是底部）时被遮挡或溢出
+function getTooltipBounds(tooltipW, targetHeight) {
+  if (!mainWin || mainWin.isDestroyed()) return null
+  const mainBounds = mainWin.getBounds()
+  // 获取当前红绿灯所在显示器的工作区（排除Dock和顶部菜单栏）
+  const display = screen.getDisplayMatching(mainBounds)
+  const { x: areaX, y: areaY, width: areaW, height: areaH } = display.workArea
+
+  // 限制最大高度不超过工作区可用高度
+  const maxH = Math.max(100, areaH - 16)
+  const h = Math.min(Math.round(targetHeight), maxH)
+
+  // 默认优先放置在红绿灯右侧，若超出屏幕工作区右边界则放置在左侧
+  let x = mainBounds.x + mainBounds.width + 4
+  if (x + tooltipW > areaX + areaW - 4) {
+    x = mainBounds.x - tooltipW - 4
+  }
+  // 水平边界防溢出保护
+  x = Math.max(areaX + 4, Math.min(x, areaX + areaW - tooltipW - 4))
+
+  // 垂直位置计算：默认顶部对齐红绿灯顶部
+  let y = mainBounds.y
+  // 若按顶部对齐会导致浮窗超出屏幕底部，则优先使浮窗底部对齐红绿灯底部
+  if (y + h > areaY + areaH - 8) {
+    y = (mainBounds.y + mainBounds.height) - h
+  }
+  // 若对齐底部后仍超出屏幕底部，则紧贴工作区底部
+  if (y + h > areaY + areaH - 8) {
+    y = areaY + areaH - h - 8
+  }
+  // 确保顶部不会超出工作区顶部
+  if (y < areaY + 8) {
+    y = areaY + 8
+  }
+
+  return { x: Math.round(x), y: Math.round(y), width: tooltipW, height: h }
+}
+
 ipcMain.on('open-balance-tooltip', (_, data) => {
   if (balanceTooltipWin && !balanceTooltipWin.isDestroyed()) {
     balanceTooltipWin.close()
@@ -1227,19 +1265,14 @@ ipcMain.on('open-balance-tooltip', (_, data) => {
     return
   }
 
-  const [mx, my] = mainWin.getPosition()
-  const [mw] = mainWin.getSize()
   const tooltipW = 280, tooltipH = 222
-
-  const { width: sw } = screen.getPrimaryDisplay().workAreaSize
-  let tx = mx + mw + 4
-  if (tx + tooltipW > sw) tx = mx - tooltipW - 4
+  const bounds = getTooltipBounds(tooltipW, tooltipH) || { width: tooltipW, height: tooltipH, x: 0, y: 0 }
 
   balanceTooltipWin = new BrowserWindow({
-    width: tooltipW,
-    height: tooltipH,
-    x: tx,
-    y: my,
+    width: bounds.width,
+    height: bounds.height,
+    x: bounds.x,
+    y: bounds.y,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000',
@@ -1299,7 +1332,14 @@ ipcMain.handle('refresh-balance-tooltip', async () => {
 
 ipcMain.on('resize-balance-tooltip', (_, height) => {
   if (balanceTooltipWin && !balanceTooltipWin.isDestroyed()) {
-    balanceTooltipWin.setSize(280, height)
+    const bounds = getTooltipBounds(280, height)
+    if (bounds) {
+      const cur = balanceTooltipWin.getBounds()
+      // 仅在尺寸或位置发生改变时才更新 bounds，避免重复刷新造成抖动
+      if (cur.x !== bounds.x || cur.y !== bounds.y || cur.width !== bounds.width || cur.height !== bounds.height) {
+        balanceTooltipWin.setBounds(bounds)
+      }
+    }
   }
 })
 
@@ -1367,6 +1407,7 @@ ipcMain.handle('update-chatgpt-token', async (_, token) => {
 })
 
 let chatgptTooltipWin = null
+let chatgptShowFallbackTimer = null
 
 ipcMain.handle('open-chatgpt-tooltip', async (_, data) => {
   // Toggle: 如果已打开则关闭
@@ -1377,16 +1418,15 @@ ipcMain.handle('open-chatgpt-tooltip', async (_, data) => {
   }
 
   const { BrowserWindow: BW } = require('electron')
-  const mainBounds = mainWin.getBounds()
-  const { width: sw } = screen.getPrimaryDisplay().workAreaSize
-
-  let x = mainBounds.x + mainBounds.width + 4
-  let y = mainBounds.y
-  if (x + 280 > sw) x = mainBounds.x - 284
+  // 初始预估高度 280，贴近常规渲染高度避免在屏幕底部时跳变
+  const bounds = getTooltipBounds(280, 280) || { width: 280, height: 280, x: 0, y: 0 }
 
   chatgptTooltipWin = new BW({
-    width: 280, height: 200,
-    x, y,
+    width: bounds.width,
+    height: bounds.height,
+    x: bounds.x,
+    y: bounds.y,
+    show: false, // 初始不展示，待内容高度完成精确计算定位后再显示，避免跳跃与抖动
     frame: false,
     transparent: true,
     resizable: false,
@@ -1400,6 +1440,17 @@ ipcMain.handle('open-chatgpt-tooltip', async (_, data) => {
       nodeIntegration: false,
     },
   })
+
+  chatgptTooltipWin.setAlwaysOnTop(true, 'floating')
+  chatgptTooltipWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  // 兜底保护：若 250ms 内未收到内容尺寸更新，则直接显示窗口避免一直隐藏
+  if (chatgptShowFallbackTimer) clearTimeout(chatgptShowFallbackTimer)
+  chatgptShowFallbackTimer = setTimeout(() => {
+    if (chatgptTooltipWin && !chatgptTooltipWin.isDestroyed() && !chatgptTooltipWin.isVisible()) {
+      chatgptTooltipWin.show()
+    }
+  }, 250)
 
   const chatgptTooltipPath = isDev
     ? path.join(__dirname, '../public/chatgpt-tooltip.html')
@@ -1426,6 +1477,14 @@ ipcMain.handle('open-chatgpt-tooltip', async (_, data) => {
       chatgptTooltipWin = null
     }
   })
+
+  chatgptTooltipWin.on('closed', () => {
+    if (chatgptShowFallbackTimer) {
+      clearTimeout(chatgptShowFallbackTimer)
+      chatgptShowFallbackTimer = null
+    }
+    chatgptTooltipWin = null
+  })
 })
 
 ipcMain.handle('refresh-chatgpt-tooltip', async () => {
@@ -1439,7 +1498,22 @@ ipcMain.handle('refresh-chatgpt-tooltip', async () => {
 
 ipcMain.on('resize-chatgpt-tooltip', (_, height) => {
   if (chatgptTooltipWin && !chatgptTooltipWin.isDestroyed()) {
-    chatgptTooltipWin.setSize(280, height)
+    const bounds = getTooltipBounds(280, height)
+    if (bounds) {
+      const cur = chatgptTooltipWin.getBounds()
+      // 仅在尺寸或位置发生改变时才更新 bounds，避免重复刷新造成抖动
+      if (cur.x !== bounds.x || cur.y !== bounds.y || cur.width !== bounds.width || cur.height !== bounds.height) {
+        chatgptTooltipWin.setBounds(bounds)
+      }
+    }
+    // 尺寸定位确认后立即显示窗口
+    if (!chatgptTooltipWin.isVisible()) {
+      if (chatgptShowFallbackTimer) {
+        clearTimeout(chatgptShowFallbackTimer)
+        chatgptShowFallbackTimer = null
+      }
+      chatgptTooltipWin.show()
+    }
   }
 })
 
@@ -1447,6 +1521,8 @@ ipcMain.on('resize-chatgpt-tooltip', (_, height) => {
 ipcMain.handle('fetch-agy-usage', async () => {
   return readAgyUsage()
 })
+
+let agyShowFallbackTimer = null
 
 ipcMain.handle('open-agy-tooltip', async (_, data) => {
   // Toggle: 如果已打开则关闭
@@ -1457,17 +1533,17 @@ ipcMain.handle('open-agy-tooltip', async (_, data) => {
   }
 
   const { BrowserWindow: BW } = require('electron')
-  const mainBounds = mainWin.getBounds()
-  const { width: sw } = screen.getPrimaryDisplay().workAreaSize
-
-  const tooltipW = 310
-  let x = mainBounds.x + mainBounds.width + 4
-  let y = mainBounds.y
-  if (x + tooltipW > sw) x = mainBounds.x - tooltipW - 4
+  // 初始预估高度 500，计算合理停靠坐标避免靠近底部时浮窗被截断
+  const initialBounds = getTooltipBounds(310, 500) || {
+    width: 310, height: 500, x: 0, y: 0
+  }
 
   agyTooltipWin = new BW({
-    width: tooltipW, height: 260,
-    x, y,
+    width: initialBounds.width,
+    height: initialBounds.height,
+    x: initialBounds.x,
+    y: initialBounds.y,
+    show: false, // 初始不展示，待内容高度完成精确计算定位后再显示，避免跳跃与抖动
     frame: false,
     transparent: true,
     resizable: false,
@@ -1481,6 +1557,17 @@ ipcMain.handle('open-agy-tooltip', async (_, data) => {
       nodeIntegration: false,
     },
   })
+
+  agyTooltipWin.setAlwaysOnTop(true, 'floating')
+  agyTooltipWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+
+  // 兜底保护：若 250ms 内未收到内容尺寸更新，则直接显示窗口避免一直隐藏
+  if (agyShowFallbackTimer) clearTimeout(agyShowFallbackTimer)
+  agyShowFallbackTimer = setTimeout(() => {
+    if (agyTooltipWin && !agyTooltipWin.isDestroyed() && !agyTooltipWin.isVisible()) {
+      agyTooltipWin.show()
+    }
+  }, 250)
 
   const agyTooltipPath = isDev
     ? path.join(__dirname, '../public/agy-tooltip.html')
@@ -1503,6 +1590,14 @@ ipcMain.handle('open-agy-tooltip', async (_, data) => {
       agyTooltipWin = null
     }
   })
+
+  agyTooltipWin.on('closed', () => {
+    if (agyShowFallbackTimer) {
+      clearTimeout(agyShowFallbackTimer)
+      agyShowFallbackTimer = null
+    }
+    agyTooltipWin = null
+  })
 })
 
 ipcMain.handle('refresh-agy-tooltip', async () => {
@@ -1518,7 +1613,22 @@ ipcMain.handle('get-last-agy-refresh-time', () => lastAgyRefreshTime)
 
 ipcMain.on('resize-agy-tooltip', (_, height) => {
   if (agyTooltipWin && !agyTooltipWin.isDestroyed()) {
-    agyTooltipWin.setSize(310, height)
+    const bounds = getTooltipBounds(310, height)
+    if (bounds) {
+      const cur = agyTooltipWin.getBounds()
+      // 仅在尺寸或位置发生改变时才更新 bounds，避免重复刷新造成抖动
+      if (cur.x !== bounds.x || cur.y !== bounds.y || cur.width !== bounds.width || cur.height !== bounds.height) {
+        agyTooltipWin.setBounds(bounds)
+      }
+    }
+    // 尺寸定位确认后立即显示窗口
+    if (!agyTooltipWin.isVisible()) {
+      if (agyShowFallbackTimer) {
+        clearTimeout(agyShowFallbackTimer)
+        agyShowFallbackTimer = null
+      }
+      agyTooltipWin.show()
+    }
   }
 })
 

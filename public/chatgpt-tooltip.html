@@ -184,22 +184,28 @@
       }, 1000);
     }
 
-    function resizeToContent() {
-      if (!window.tooltipAPI || !window.tooltipAPI.resizeChatGPT) return;
-      var measure = function() {
-        var panel = document.getElementById('root');
-        if (!panel) return;
-        var rect = panel.getBoundingClientRect();
-        window.tooltipAPI.resizeChatGPT(Math.ceil(rect.height + 8));
-      };
+    var lastSentHeight = 0;
+    var resizeRaf = null;
 
-      // 这里做多次补测，避免首帧字体/按钮文案/textarea 渲染晚一点时偶发多出几像素
-      window.requestAnimationFrame(function() {
-        measure();
-        window.requestAnimationFrame(measure);
+    // 测量内容高度并防抖通知主进程
+    function measureAndResize() {
+      if (!window.tooltipAPI || !window.tooltipAPI.resizeChatGPT) return;
+      var panel = document.getElementById('root');
+      if (!panel) return;
+      var rect = panel.getBoundingClientRect();
+      var targetH = Math.ceil(rect.height + 8);
+      // 仅当高度发生实际改变且有效时才发送
+      if (targetH !== lastSentHeight && targetH > 40) {
+        lastSentHeight = targetH;
+        window.tooltipAPI.resizeChatGPT(targetH);
+      }
+    }
+
+    function resizeToContent() {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(function() {
+        measureAndResize();
       });
-      window.setTimeout(measure, 24);
-      window.setTimeout(measure, 80);
     }
 
     function ensureResizeObserver() {

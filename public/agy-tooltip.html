@@ -11,7 +11,18 @@
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
     -webkit-app-region: no-drag;
     user-select: none;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  body::-webkit-scrollbar {
+    width: 4px;
+  }
+  body::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  body::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
   }
   .panel {
     position: relative;
@@ -214,20 +225,28 @@
       }, 1000);
     }
 
-    function resizeToContent() {
+    var lastSentHeight = 0;
+    var resizeRaf = null;
+
+    // 测量内容高度并防抖通知主进程
+    function measureAndResize() {
       if (!window.tooltipAPI || !window.tooltipAPI.resizeAgy) return;
-      var measure = function() {
-        var panel = document.getElementById('root');
-        if (!panel) return;
-        var rect = panel.getBoundingClientRect();
-        window.tooltipAPI.resizeAgy(Math.ceil(rect.height + 8));
-      };
-      window.requestAnimationFrame(function() {
-        measure();
-        window.requestAnimationFrame(measure);
+      var panel = document.getElementById('root');
+      if (!panel) return;
+      var rect = panel.getBoundingClientRect();
+      var targetH = Math.ceil(rect.height + 8);
+      // 仅当高度发生实际改变且有效时才发送
+      if (targetH !== lastSentHeight && targetH > 40) {
+        lastSentHeight = targetH;
+        window.tooltipAPI.resizeAgy(targetH);
+      }
+    }
+
+    function resizeToContent() {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(function() {
+        measureAndResize();
       });
-      window.setTimeout(measure, 24);
-      window.setTimeout(measure, 80);
     }
 
     function ensureResizeObserver() {
@@ -286,16 +305,16 @@
 
     function renderGroup(title, desc, groupData, isActive) {
       if (!groupData) return '';
-      var weeklyHtml = renderBucket('周剩余配额', groupData.weekly);
       var fiveHourHtml = renderBucket('5小时剩余配额', groupData.fiveHour);
+      var weeklyHtml = renderBucket('周剩余配额', groupData.weekly);
 
       return '<div class="group-card' + (isActive ? ' active' : '') + '">' +
         '<div class="group-header">' +
           '<span class="group-title">' + title + '</span>' +
           (isActive ? '<span class="group-active-tag">当前使用</span>' : '') +
         '</div>' +
-        weeklyHtml +
         fiveHourHtml +
+        weeklyHtml +
       '</div>';
     }
 
