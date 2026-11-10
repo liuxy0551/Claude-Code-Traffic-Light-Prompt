@@ -1,0 +1,20 @@
+public/agy-tooltip.html
+  h_0c940a947252a6 264-265
+public/balance-tooltip.html
+  h_0c940a947252a6 222
+public/chatgpt-tooltip.html
+  h_0c940a947252a6 257
+src/app/App.tsx
+  h_0c940a947252a6 404,407,409,415,417,448,451,456,498,501,506
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1f4f70624b47206e3a09514c3861c8f358fbc171",
+  "prompts": {},
+  "humans": {
+    "h_0c940a947252a6": {
+      "author": "liuyi <liuyi@dtstack.com>"
+    }
+  }
+}
